@@ -1,0 +1,55 @@
+{
+  "name": "textfx.withgoogle",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "app",
+    "backend"
+  ],
+  "scripts": {
+    "bootstrap": "npm install",
+    "dev": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/dev.ps1",
+    "electron-dev": "concurrently -k \"cross-env BROWSER=none npm run dev --workspace app\" \"npm run dev --workspace backend\" \"wait-on http://localhost:5173 && electron .\"",
+    "build": "npm run build --workspaces",
+    "dist": "npm run build && electron-builder",
+    "start": "npm --workspace backend start"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/example/textfx"
+  },
+  "build": {
+    "appId": "com.textfx.app",
+    "productName": "TextFX",
+    "extends": null,
+    "npmRebuild": false,
+    "win": {
+      "target": "nsis"
+    },
+    "files": [
+      "electron/**/*",
+      "backend/dist/**/*",
+      "app/dist/**/*",
+      "package.json",
+      "node_modules/**/*"
+    ],
+    "directories": {
+      "app": ".",
+      "output": "dist-electron"
+    },
+    "extraMetadata": {
+      "main": "electron/main.js"
+    }
+  },
+  "main": "electron/main.js",
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.10.2",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "electron": "^39.2.6",
+    "electron-builder": "^26.0.12",
+    "wait-on": "^9.0.3"
+  }
+}

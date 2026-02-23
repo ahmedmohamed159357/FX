@@ -1,0 +1,354 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Outfit:wght@100..900&display=swap');
+
+/* ==== Variables & Elite Reset ==== */
+:root {
+  --primary: #818cf8;
+  /* Soft Indigo */
+  --primary-glow: rgba(129, 140, 248, 0.5);
+  --secondary: #2dd4bf;
+  /* Teal/Emerald */
+  --accent: #f472b6;
+  /* Pink accent for strategy */
+
+  --bg-dark: #020617;
+  /* Deepest Midnight */
+  --bg-nebula: radial-gradient(circle at 0% 0%, #0f172a 0%, #020617 100%);
+
+  --surface: rgba(15, 23, 42, 0.6);
+  --surface-hover: rgba(30, 41, 59, 0.8);
+  --border: rgba(129, 140, 248, 0.15);
+  --border-glow: rgba(129, 140, 248, 0.3);
+
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+
+  --radius-lg: 24px;
+  --radius-md: 16px;
+  --radius-sm: 12px;
+
+  --shadow-elite: 0 10px 40px -10px rgba(0, 0, 0, 0.5);
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  background: var(--bg-nebula);
+  color: var(--text-primary);
+  line-height: 1.6;
+  overflow-x: hidden;
+}
+
+.container {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 60px 40px;
+}
+
+/* ==== Typography Overhaul ==== */
+h1,
+h2,
+h3,
+.archetype-card .name {
+  font-family: 'Outfit', sans-serif;
+  letter-spacing: -0.02em;
+}
+
+.header h1 {
+  font-size: 4.5rem;
+  font-weight: 800;
+  margin: 0;
+  line-height: 0.95;
+  background: linear-gradient(180deg, #fff 0%, #94a3b8 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 20px rgba(129, 140, 248, 0.2));
+}
+
+.header .tagline {
+  font-size: 1.1rem;
+  font-weight: 400;
+  color: var(--text-secondary);
+  margin-top: 16px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  max-width: 800px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* ==== Creative Stages Layout ==== */
+.stage-container {
+  display: flex;
+  flex-direction: column;
+  gap: 80px;
+  margin-top: 80px;
+}
+
+.stage-header {
+  margin-bottom: 32px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.stage-number {
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--primary);
+  padding: 4px 12px;
+  background: rgba(129, 140, 248, 0.1);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  text-transform: uppercase;
+}
+
+.stage-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+/* ==== Elite Cards (Panes) ==== */
+.pane {
+  background: var(--surface);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 40px;
+  box-shadow: var(--shadow-elite);
+  transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.pane::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--primary-glow), transparent);
+  opacity: 0;
+  transition: opacity 0.4s;
+}
+
+.pane:hover {
+  transform: translateY(-8px);
+  border-color: var(--border-glow);
+  box-shadow: 0 20px 50px -10px rgba(129, 140, 248, 0.15);
+}
+
+.pane:hover::before {
+  opacity: 1;
+}
+
+/* ==== Inputs & Controls ==== */
+.input {
+  width: 100%;
+  background: rgba(2, 6, 23, 0.5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 24px;
+  font-family: 'Inter', sans-serif;
+  font-size: 1.1rem;
+  color: var(--text-primary);
+  transition: all 0.3s ease;
+  min-height: 200px;
+  outline: none;
+}
+
+.input:focus {
+  border-color: var(--primary);
+  background: rgba(2, 6, 23, 0.8);
+  box-shadow: 0 0 20px var(--primary-glow);
+}
+
+.btn {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 18px 36px;
+  border-radius: 100px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+  border: none;
+  font-size: 0.9rem;
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: var(--bg-dark);
+  box-shadow: 0 4px 15px var(--primary-glow);
+}
+
+.btn-primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px var(--primary-glow);
+  background: #a5b4fc;
+}
+
+.btn-secondary {
+  background: rgba(148, 163, 184, 0.1);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+}
+
+.btn-secondary:hover {
+  background: rgba(148, 163, 184, 0.2);
+}
+
+/* ==== Archetype Elite Grid ==== */
+.archetype-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 20px;
+}
+
+.archetype-card {
+  padding: 24px;
+  border-radius: var(--radius-md);
+  background: rgba(15, 23, 42, 0.4);
+  border: 1px solid var(--border);
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.archetype-card:hover {
+  border-color: var(--primary);
+  background: rgba(129, 140, 248, 0.05);
+}
+
+.archetype-card.active {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.archetype-card.active .name,
+.archetype-card.active .icon {
+  color: var(--bg-dark);
+}
+
+.archetype-card.active .desc {
+  color: rgba(2, 6, 23, 0.7);
+}
+
+.archetype-card .icon {
+  font-size: 2rem;
+  margin-bottom: 12px;
+  display: block;
+  transition: color 0.3s;
+}
+
+.archetype-card .name {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 4px;
+  display: block;
+}
+
+.archetype-card .desc {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.3;
+}
+
+/* ==== Creative Output Styles ==== */
+.insight-core {
+  font-family: 'Outfit', sans-serif;
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--text-primary);
+  margin-bottom: 40px;
+  padding-bottom: 32px;
+  border-bottom: 1px solid var(--border);
+}
+
+.technique h3 {
+  color: var(--secondary);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  margin-bottom: 16px;
+}
+
+.technique li {
+  font-size: 1.1rem;
+  padding: 16px 24px;
+  background: rgba(15, 23, 42, 0.5);
+  border-radius: var(--radius-sm);
+  border-left: 2px solid var(--secondary);
+  margin-bottom: 12px;
+  list-style: none;
+}
+
+.script-text {
+  font-family: 'Inter', monospace;
+  font-size: 1.1rem;
+  background: #020617;
+  padding: 40px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  color: #fbbf24;
+  /* Amber text for cinematic feel */
+  box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.5);
+}
+
+/* ==== Animations ==== */
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.stage-container>section {
+  animation: slideUp 0.8s cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+/* ==== RTL Specifics ==== */
+[dir="rtl"] {
+  font-family: 'Inter', system-ui, sans-serif;
+  /* Standardise font for AR */
+}
+
+[dir="rtl"] .technique li {
+  border-left: none;
+  border-right: 2px solid var(--secondary);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .header h1 {
+    font-size: 3rem;
+  }
+
+  .container {
+    padding: 40px 20px;
+  }
+
+  .pane {
+    padding: 24px;
+  }
+}
