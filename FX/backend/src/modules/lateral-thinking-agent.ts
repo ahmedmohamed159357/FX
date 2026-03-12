@@ -1,13 +1,19 @@
 /**
- * Lateral Thinking Agent — Advanced Creative Reasoning
- * 
- * Implements 5 core lateral thinking techniques:
- * 1. Provocation (PO) — Flip assumptions, ask "what if opposite?"
- * 2. Analogies — Link product to unrelated domains
- * 3. Random Stimulus — Force unexpected connections via random words
- * 4. Opposite Thinking — Push to extremes, find the desirable middle
- * 5. Constraint Reversal — Invert the problem statement
+ * Lateral Thinking Agent v4 — Live Context Debate
+ *
+ * What changed vs v3:
+ *   - Strategy Master now cites a REAL headline in their Trend Round
+ *   - Debate prompt passes liveContext.strategicAngle verbatim
+ *   - trendConnection in output includes the live event reference
+ *   - ✨ NEW (v4.1): Constraint Reversal added as 5th technique (active AI function)
  */
+
+import { generateVisualPrompt, VisualPrompt, ConceptInput } from './visual-prompt-generator'
+import { TrendBundle, buildTrendInjectionBlock } from './trend-service'
+
+// ─────────────────────────────────────────────
+// TYPES
+// ─────────────────────────────────────────────
 
 export interface LateralThinkingContext {
   domain: string
@@ -19,40 +25,55 @@ export interface LateralThinkingContext {
   knowledgePrompt?: string
   archetype?: string
   brandVoice?: {
-    formalLevel: number // 0-10
-    metaphorLevel: number // 0-10
-    intensity: number // 0-10
+    formalLevel: number
+    metaphorLevel: number
+    intensity: number
   }
   provider?: any
   providerConfig?: any
+  currentTrends?: TrendBundle
 }
 
 export interface ProvocationResult {
-  provocation: string
-  reversal: string
-  opportunity: string
-  creativeInsight: string
+  provocation: string; reversal: string; opportunity: string; creativeInsight: string
 }
-
 export interface AnalogyResult {
-  sourceField: string
-  sharedPrinciple: string
-  application: string
-  metaphor: string
+  sourceField: string; sharedPrinciple: string; application: string; metaphor: string
 }
-
 export interface RandomStimulusResult {
-  randomWord: string
-  forcedConnection: string
-  visualMetaphor: string
-  unexpectedAngle: string
+  randomWord: string; forcedConnection: string; visualMetaphor: string; unexpectedAngle: string
+}
+export interface OppositeThinkingResult {
+  extremePositive: string; extremeNegative: string; desirableMiddle: string; paradox: string
+}
+export interface ConstraintReversalResult {
+  constraint: string; reversal: string; opportunity: string; insight: string
 }
 
-export interface OppositeThinkingResult {
-  extremePositive: string
-  extremeNegative: string
-  desirableMiddle: string
-  paradox: string
+export interface AgentVoice {
+  agent: 'Creative Rebel' | 'Strategy Master' | 'Picky Client'
+  stance: string
+  sharpCritique: string
+  contribution: string
+  trendAngle?: string
+  liveEventCite?: string   // ← NEW: "بما إن النهاردة حصل..."
+}
+
+export interface AgentDebateResult {
+  voices: AgentVoice[]
+  conflictPoint: string
+  resolution: string
+  debateSummary: string
+  trendConnection: string
+  liveEventUsed?: string   // ← NEW: which headline was woven in
+  finalMasterpiece: {
+    headline: string
+    tagline: string
+    coreIdea: string
+    emotionalTruth: string
+    creativeDevice: string
+    visualNotes: string
+  }
 }
 
 export interface LateralThinkingOutput {
@@ -60,397 +81,413 @@ export interface LateralThinkingOutput {
   analogies: AnalogyResult[]
   randomStimulus: RandomStimulusResult
   oppositeThinking: OppositeThinkingResult
+  constraintReversal: ConstraintReversalResult
   synthesizedInsight: string
   creativeBreakthrough: string
+  agentDebate: AgentDebateResult
+  visualPrompt: VisualPrompt
 }
 
-/**
- * Robust JSON parsing for AI responses
- */
-function parseAIJson(text: string): any {
+// ─────────────────────────────────────────────
+// UTILITY
+// ─────────────────────────────────────────────
+
+function safeParseJson(text: string): any {
   try {
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]);
-    }
-    return JSON.parse(text);
-  } catch (e) {
-    return null;
-  }
+    const m = text.match(/\{[\s\S]*\}/)
+    return m ? JSON.parse(m[0]) : JSON.parse(text)
+  } catch { return null }
 }
 
-/**
- * TECHNIQUE 1: PROVOCATION (PO)
- * "If the opposite were true, what would we discover?"
- */
-export async function generateProvocation(context: LateralThinkingContext): Promise<ProvocationResult> {
-  const { domain, problem, target, language = 'en' } = context
-  const safeProblem = problem || 'the core challenge'
+// ─────────────────────────────────────────────
+// SYSTEM PROMPT
+// ─────────────────────────────────────────────
 
-  if (context.useRealAI && context.provider) {
-    const prompt = `Technique: PROVOCATION (PO). 
-    Domain: ${domain}
-    Problem: ${safeProblem}
-    Target: ${target}
-    
-    Task: Flip the assumption. Ask "what if the opposite were true?".
-    Return JSON format: { "provocation": "...", "reversal": "...", "opportunity": "...", "creativeInsight": "..." }`
-
-    try {
-      const response = await context.provider.generateCreativeText(
-        prompt,
-        getLateralThinkingSystemPrompt(context),
-        context.providerConfig
-      );
-
-      const parsed = parseAIJson(response.text);
-      if (parsed && parsed.provocation) return parsed as ProvocationResult;
-    } catch (e) {
-      console.warn('AI Parsing failed for Provocation, falling back to mock.');
-    }
-  }
-
-  // Example: "If water reminders were ANNOYING, what would they look like?"
-  const provocation = language === 'ar'
-    ? `ماذا لو كان ${safeProblem} عكس ما نتوقع تماماً؟`
-    : `PO: If ${safeProblem} were the OPPOSITE of what we want, what would that reveal?`
-
-  // Reverse the provocation to find opportunity
-  const reversal = language === 'ar'
-    ? `بدلاً من حل "${safeProblem}"، ماذا لو تقبلنا التناقض: ${reverseProblem(safeProblem)}`
-    : `Instead of solving "${safeProblem}", what if we embraced a paradox: ${reverseProblem(safeProblem)}`
-
-  // Generate creative opportunity
-  const opportunity = findOpportunittyFromReversal(safeProblem, target)
-
-  // Synthesize into insight
-  const creativeInsight = language === 'ar'
-    ? `الاحتياج الحقيقي ليس ${safeProblem} — بل هو ${opportunity}.`
-    : `The real need isn't ${safeProblem} — it's ${opportunity}.`
-
-  return {
-    provocation,
-    reversal,
-    opportunity,
-    creativeInsight
-  }
-}
-
-function reverseProblem(problem: string | undefined): string {
-  // Flip the core assumption
-  if (!problem) return 'the opposite of the core assumption'
-
-  const reversals: { [key: string]: string } = {
-    'forget': 'people already know they need to hydrate',
-    'forget to drink': 'people drink too much unconsciously',
-    'irritating': 'invisible and forgotten',
-    'boring': 'sacred ritual',
-    'utilitarian': 'luxury experience',
-    'meditate': 'already want calm but resist the action',
-    'challenge': 'opportunity lying dormant',
-    // Arabic
-    'ينسى': 'الناس يعرفون بالفعل احتياجاتهم ولكن يحتاجون للتحفيز',
-    'نسيان': 'الناس يعرفون بالفعل احتياجاتهم ولكن يحتاجون للتحفيز',
-    'ممل': 'تحويله إلى طقس مقدس',
-    'صعب': 'فرصة كامنة تنتظر التفعيل'
-  }
-
-  for (const [key, value] of Object.entries(reversals)) {
-    if (problem.toLowerCase().includes(key)) {
-      return value
-    }
-  }
-
-  return `the opposite of "${problem}"`
-}
-
-function findOpportunittyFromReversal(problem: string | undefined, target: string): string {
-  if (!problem) problem = 'the core challenge'
-
-  // What does the reversal teach us?
-  const opportunities: { [key: string]: string } = {
-    'forget': 'making meditation feel inevitable rather than forced',
-    'forget too much': 'finding the joyful, intentional moment of practice',
-    'invisible': 'making the app a visible, celebrated ritual',
-    'sacred': 'turning everyday practice into a moment of self-care',
-    'luxury': 'positioning the experience as a premium self-gift',
-    'challenge': 'the deeper human need beneath the surface problem',
-    // Arabic
-    'ينسى': 'جعل العادة تبدو بديهية وليست مفروضة',
-    'نسيان': 'جعل العادة تبدو بديهية وليست مفروضة',
-    'ممل': 'تحويل الممارسة اليومية إلى لحظة عناية ذاتية',
-    'صعب': 'الاحتياج البشري العميق تحت سطح المشكلة'
-  }
-
-  for (const [key, value] of Object.entries(opportunities)) {
-    if (problem.toLowerCase().includes(key) || target.toLowerCase().includes(key)) {
-      return value
-    }
-  }
-
-  return 'the deeper human need beneath the surface problem'
-}
-
-/**
- * TECHNIQUE 2: ANALOGIES
- * "What does this product remind us of in other domains?"
- */
-export async function generateAnalogies(context: LateralThinkingContext): Promise<AnalogyResult[]> {
-  const { problem, target, domain } = context
-
-  if (context.useRealAI && context.provider) {
-    const prompt = `Technique: ANALOGIES.
-    Domain: ${domain}
-    Problem: ${problem}
-    Target: ${target}
-    
-    Task: Link this to 3 unrelated domains.
-    Return JSON: { "analogies": [{ "sourceField": "...", "sharedPrinciple": "...", "application": "...", "metaphor": "..." }] }`
-
-    try {
-      const response = await context.provider.generateCreativeText(
-        prompt,
-        getLateralThinkingSystemPrompt(context),
-        context.providerConfig
-      );
-      const parsed = parseAIJson(response.text);
-      if (parsed && parsed.analogies) return parsed.analogies;
-    } catch (e) {
-      console.warn('AI Parsing failed for Analogies, falling back to mock.');
-    }
-  }
-
-  const analogiesList: AnalogyResult[] = context.language === 'ar' ? [
-    {
-      sourceField: 'طقوس يومية (مثل مراسم القهوة)',
-      sharedPrinciple: 'وقفة، لحظة نية، هدية لنفسك',
-      application: 'يصبح شرب الماء طقساً وليس عملاً روتينياً',
-      metaphor: 'الترطيب كتأمل صباحي'
-    }
-  ] : [
-    {
-      sourceField: 'Daily Ritual (like coffee ceremony)',
-      sharedPrinciple: 'A pause, a moment of intention, a gift to yourself',
-      application: 'Water becomes a ritual, not a chore',
-      metaphor: 'Hydration as morning meditation'
-    },
-  ]
-
-  return Promise.resolve(analogiesList)
-}
-
-/**
- * TECHNIQUE 3: RANDOM STIMULUS
- * "Pick a random word and force a connection"
- */
-export async function generateRandomStimulus(context: LateralThinkingContext): Promise<RandomStimulusResult> {
-  const randomWords = ['carousel', 'lighthouse', 'echo', 'threshold', 'breath', 'pulse', 'tide', 'mirror', 'compass', 'spark']
-  const randomWord = randomWords[Math.floor(Math.random() * randomWords.length)]
-
-  if (context.useRealAI && context.provider) {
-    const prompt = `Technique: RANDOM STIMULUS.
-    Random Word: ${randomWord}
-    Brief: ${context.domain} / ${context.problem}
-    
-    Task: Force an unexpected connection.
-    Return JSON: { "randomWord": "${randomWord}", "forcedConnection": "...", "visualMetaphor": "...", "unexpectedAngle": "..." }`
-
-    try {
-      const response = await context.provider.generateCreativeText(
-        prompt,
-        getLateralThinkingSystemPrompt(context),
-        context.providerConfig
-      );
-      const parsed = parseAIJson(response.text);
-      if (parsed && parsed.forcedConnection) return parsed as RandomStimulusResult;
-    } catch (e) {
-      console.warn('AI Parsing failed for Random Stimulus, falling back to mock.');
-    }
-  }
-
-  return Promise.resolve({
-    randomWord,
-    forcedConnection: 'Async placeholder for forced connection',
-    visualMetaphor: 'Async placeholder for visual metaphor',
-    unexpectedAngle: 'Async placeholder for unexpected angle'
-  })
-}
-
-/**
- * TECHNIQUE 4: OPPOSITE THINKING
- * "Push to extremes, then find the desirable middle"
- */
-export async function generateOppositeThinking(context: LateralThinkingContext): Promise<OppositeThinkingResult> {
-  const { problem, target } = context
-
-  if (context.useRealAI && context.provider) {
-    const prompt = `Technique: OPPOSITE THINKING.
-    Brief: ${problem}
-    Target: ${target}
-    
-    Task: Push to extremes (completely mandatory vs completely optional/ignored) and find the "desirable middle" paradox.
-    Return JSON: { "extremePositive": "...", "extremeNegative": "...", "desirableMiddle": "...", "paradox": "..." }`
-
-    try {
-      const response = await context.provider.generateCreativeText(
-        prompt,
-        getLateralThinkingSystemPrompt(context),
-        context.providerConfig
-      );
-      const parsed = parseAIJson(response.text);
-      if (parsed && parsed.desirableMiddle) return parsed as OppositeThinkingResult;
-    } catch (e) {
-      console.warn('AI Parsing failed for Opposite Thinking, falling back to mock.');
-    }
-  }
-
-  return Promise.resolve({
-    extremePositive: context.language === 'ar' ? 'إيجابية مفرطة' : 'Async placeholder for extreme positive',
-    extremeNegative: context.language === 'ar' ? 'سلبية مفرطة' : 'Async placeholder for extreme negative',
-    desirableMiddle: context.language === 'ar' ? 'الوسط المرغوب' : 'Async placeholder for desirable middle-ground',
-    paradox: context.language === 'ar' ? 'التناقض الجوهري' : 'Async placeholder for the core paradox'
-  })
-}
-
-/**
- * SYNTHESIZE ALL TECHNIQUES INTO A BREAKTHROUGH INSIGHT
- */
-export async function synthesizeLateralThinking(context: LateralThinkingContext): Promise<LateralThinkingOutput> {
-  // Execute all techniques in parallel for maximum efficiency
-  const [provocation, analogies, randomStimulus, oppositeThinking] = await Promise.all([
-    generateProvocation(context),
-    generateAnalogies(context),
-    generateRandomStimulus(context),
-    generateOppositeThinking(context)
-  ])
-
-  // Weave all techniques into a single insight
-  const synthesizedInsight = `
-From provocation, we learn: ${provocation.opportunity}
-
-From analogies, we discover: The product is like a ${analogies[0]?.metaphor || 'ritual'}.
-
-From random stimulus (${randomStimulus.randomWord}), we see: ${randomStimulus.unexpectedAngle}
-
-From opposite thinking, we find: ${oppositeThinking.desirableMiddle.split('\n')[0]}
-
-Synthesis: The breakthrough is repositioning ${context.problem} as ${oppositeThinking.desirableMiddle.split('\n')[1] || 'a new opportunity'}.
-  `.trim()
-
-  // Final breakthrough
-  const creativeBreakthrough = context.language === 'ar' ? `
-🎯 طفرة إبداعية:
-
-بدلاً من محاربة الطبيعة البشرية (الناس ينسون، التذكيرات مزعجة)،
-نحن نحتضن التناقض: اجعل النسيان مستحيلاً بجعل التذكر أمراً لا يقاوم.
-` : `
-🎯 CREATIVE BREAKTHROUGH:
-
-Instead of fighting human nature (people forget, reminders are annoying),
-we EMBRACE the paradox: Make forgetting impossible by making remembering irresistible.
-`
-
-  return {
-    provocation,
-    analogies,
-    randomStimulus,
-    oppositeThinking,
-    synthesizedInsight,
-    creativeBreakthrough
-  }
-}
-
-/**
- * SYSTEM PROMPT FOR AI MODELS
- * Use this when calling Google Vertex AI, OpenAI, or local LLMs
- */
 export function getLateralThinkingSystemPrompt(context?: LateralThinkingContext): string {
-  const language = context?.language || 'en';
-  const archetype = context?.archetype || 'The Everyman';
-  const voice = context?.brandVoice || { formalLevel: 5, metaphorLevel: 5, intensity: 5 };
+  const language  = context?.language  || 'en'
+  const archetype = context?.archetype || 'The Everyman'
+  const voice     = context?.brandVoice || { formalLevel: 5, metaphorLevel: 5, intensity: 5 }
+
+  const trendBlock = context?.currentTrends
+    ? buildTrendInjectionBlock(context.currentTrends, language) : ''
+
+  // knowledgePrompt carries the reworkDirective from the Orchestrator on iteration 2+
+  // Prepended to system prompt so EVERY technique + debate sees the fix directive
+  const reworkBlock = context?.knowledgePrompt ? `\n${context.knowledgePrompt}` : ''
 
   if (language === 'ar') {
-    return `أنت مدير إبداعي عالمي متخصص في التفكير الجانبي (Lateral Thinking).
-    
-دورك ليس مجرد كتابة إعلانات، بل "قلب الطاولة" على الافتراضات التقليدية.
+    return `أنت مدير إبداعي عالمي متخصص في التفكير الجانبي.
+دورك: قلب الطاولة على الافتراضات التقليدية.
 
 [BRAND PERSONALITY]
-- النمط الشخصي (Archetype): ${archetype}
-- مستوى النبرة: ${voice.formalLevel > 7 ? 'رسمي جداً' : voice.formalLevel < 3 ? 'عامي/كاجوال' : 'متوازن'}
-- مستوى الاستعارة: ${voice.metaphorLevel > 7 ? 'شاعري وفلسفي' : 'مباشر وواضح'}
-
-تأكد من أن نبرة صوتك وأفكارك تعكس شخصية الـ ${archetype} بدقة.
-
-عندما يأتيك ملخص (Brief)، لا تفكر بشكل مباشر. بدلاً من ذلك:
-
-1. الاستفزاز (Provocation): اسأل "ماذا لو كان العكس صحيحاً؟".
-2. التشبيهات (Analogies): اربط المنتج بمجالات غير متوقعة.
-3. الحافز العشوائي (Random): اربط المنتج بكلمة عشوائية لتوليد زاوية جديدة.
-
-مخرجاتك يجب أن تكون:
-- باللغة العربية الفصحى أو اللهجة المصرية الراقية (حسب سياق الشخصية المختارة).
-- عميقة وفلسفية وليست سطحية.
-- تستخدم الاستعارات كاستراتيجية للفهم.
-    `
+- النمط: ${archetype}
+- النبرة: ${voice.formalLevel > 7 ? 'رسمي' : voice.formalLevel < 3 ? 'عامي' : 'متوازن'}
+- الاستعارة: ${voice.metaphorLevel > 7 ? 'شاعري' : 'مباشر'}
+- الحدة: ${voice.intensity > 7 ? 'حادة' : voice.intensity < 3 ? 'هادئة' : 'متوازنة'}
+${trendBlock}${reworkBlock}
+أعد JSON فقط — بدون شرح.`
   }
 
-  return `You are a Creative Director trained in lateral thinking and constraint breaking.
+  return `You are a Creative Director trained in lateral thinking.
+Think SIDEWAYS, not forward.
+Archetype: ${archetype} | Formal: ${voice.formalLevel}/10 | Metaphor: ${voice.metaphorLevel}/10
+${trendBlock}${reworkBlock}
+Return JSON only.`
+}
 
-Your role is to think SIDEWAYS, not forward. 
+// ─────────────────────────────────────────────
+// TECHNIQUES  (4 original + NEW 5th: Constraint Reversal)
+// ─────────────────────────────────────────────
 
-[BRAND PERSONALITY]
-- Brand Archetype: ${archetype}
-- Formal Level: ${voice.formalLevel}/10
-- Metaphor Usage: ${voice.metaphorLevel}/10
-- Emotional Intensity: ${voice.intensity}/10
+export async function generateProvocation(c: LateralThinkingContext): Promise<ProvocationResult> {
+  const { domain, problem = 'the core challenge', target, language = 'en' } = c
+  if (c.useRealAI && c.provider) {
+    const trendNote = c.currentTrends ? `\nTrend context: ${c.currentTrends.primary.keywordEn}` : ''
+    try {
+      const r = await c.provider.generateCreativeText(
+        `Technique: PROVOCATION. Domain: ${domain}. Problem: ${problem}. Target: ${target}.${trendNote}
+Return JSON: { "provocation":"...", "reversal":"...", "opportunity":"...", "creativeInsight":"..." }`,
+        getLateralThinkingSystemPrompt(c), c.providerConfig)
+      const p = safeParseJson(r.text); if (p?.provocation) return p
+    } catch { console.warn('[Provocation] fallback') }
+  }
+  return {
+    provocation:    language === 'ar' ? `ماذا لو كان ${problem} عكس ما نتوقع؟` : `PO: What if ${problem} were the OPPOSITE?`,
+    reversal:       language === 'ar' ? `تقبّل التناقض: ${reverseProblem(problem)}` : `Embrace the paradox: ${reverseProblem(problem)}`,
+    opportunity:    findOpportunity(problem, target),
+    creativeInsight: language === 'ar' ? `الاحتياج الحقيقي: ${findOpportunity(problem, target)}` : `Real need: ${findOpportunity(problem, target)}`,
+  }
+}
 
-Your output, tone, and insight generation MUST strictly reflect the soul of "${archetype}".
+export async function generateAnalogies(c: LateralThinkingContext): Promise<AnalogyResult[]> {
+  if (c.useRealAI && c.provider) {
+    try {
+      const r = await c.provider.generateCreativeText(
+        `Technique: ANALOGIES. Domain: ${c.domain}. Problem: ${c.problem}. Target: ${c.target}.
+Return JSON: { "analogies": [{ "sourceField":"...", "sharedPrinciple":"...", "application":"...", "metaphor":"..." }] }`,
+        getLateralThinkingSystemPrompt(c), c.providerConfig)
+      const p = safeParseJson(r.text); if (p?.analogies) return p.analogies
+    } catch { console.warn('[Analogies] fallback') }
+  }
+  return c.language === 'ar'
+    ? [{ sourceField: 'طقوس يومية', sharedPrinciple: 'وقفة ونية', application: 'يصبح طقساً', metaphor: 'التجربة كتأمل صباحي' }]
+    : [{ sourceField: 'Daily Ritual', sharedPrinciple: 'A pause of intention', application: 'Product becomes ritual', metaphor: 'Experience as morning meditation' }]
+}
 
-When presented with a creative brief, you don't solve it directly.
-Instead, you:
+export async function generateRandomStimulus(c: LateralThinkingContext): Promise<RandomStimulusResult> {
+  const words = ['carousel','lighthouse','echo','threshold','breath','pulse','tide','mirror','compass','spark']
+  const randomWord = words[Math.floor(Math.random() * words.length)]
+  if (c.useRealAI && c.provider) {
+    try {
+      const r = await c.provider.generateCreativeText(
+        `Technique: RANDOM STIMULUS. Word: ${randomWord}. Brief: ${c.domain} / ${c.problem}.
+Return JSON: { "randomWord":"${randomWord}", "forcedConnection":"...", "visualMetaphor":"...", "unexpectedAngle":"..." }`,
+        getLateralThinkingSystemPrompt(c), c.providerConfig)
+      const p = safeParseJson(r.text); if (p?.forcedConnection) return p
+    } catch { console.warn('[RandomStimulus] fallback') }
+  }
+  return { randomWord, forcedConnection: `Like a ${randomWord} in chaos`, visualMetaphor: `A ${randomWord}`, unexpectedAngle: `What if the brand behaved like a ${randomWord}?` }
+}
 
-1. PROVOKE: Flip the assumption. Ask "What if the opposite were true?" and mine that inversion for opportunity.
-
-2. ANALOGIZE: Link the product to unexpected domains.
-
-3. RANDOMIZE: Take a random word and force a connection.
-
-4. OPPOSITE: Push to extremes and find the desirable middle.
-
-5. REVERSE: Invert the constraint.
-
-[INSTRUCTIONS]
-If provided with [CONTEXT INJECTION], strictly adhere to the brand voice and principles found there.
-
-Your output should:
-- Break clichés and surface-level thinking
-- Find the paradox or tension beneath the brief
-- Propose positioning that honors what people FEEL
-- Use metaphor as strategy
-- Reflect the chosen archetype: ${archetype}
-
-Remember: Creativity isn't about more ideas. It's about BETTER questions and unexpected connections.`
+export async function generateOppositeThinking(c: LateralThinkingContext): Promise<OppositeThinkingResult> {
+  if (c.useRealAI && c.provider) {
+    try {
+      const r = await c.provider.generateCreativeText(
+        `Technique: OPPOSITE THINKING. Brief: ${c.problem}. Target: ${c.target}.
+Return JSON: { "extremePositive":"...", "extremeNegative":"...", "desirableMiddle":"...", "paradox":"..." }`,
+        getLateralThinkingSystemPrompt(c), c.providerConfig)
+      const p = safeParseJson(r.text); if (p?.desirableMiddle) return p
+    } catch { console.warn('[OppositeThinking] fallback') }
+  }
+  return {
+    extremePositive: c.language === 'ar' ? 'إيجابية مفرطة' : 'Over-engineered perfection',
+    extremeNegative: c.language === 'ar' ? 'إهمال تام' : 'Complete indifference',
+    desirableMiddle: c.language === 'ar' ? 'الاختيار الواعي' : 'Conscious choice',
+    paradox:         c.language === 'ar' ? 'الحرية الحقيقية هي الالتزام الذي تختاره' : 'True freedom is the commitment you choose',
+  }
 }
 
 /**
- * CONSTRAINT REVERSAL LIBRARY
- * Common problem → Reversed opportunity
+ * 🆕 5th Technique: CONSTRAINT REVERSAL
+ * Takes a problem constraint and reverses it to uncover hidden opportunities.
+ * Turns static constraint mappings into dynamic AI-powered insight.
  */
-export const constraintReversals = {
-  // English
-  'people forget': 'What if forgetting is the real challenge to celebrate?',
-  'reminder is annoying': 'What if the reminder is actually an invitation to joy?',
-  'hydration is boring': 'What if hydration is the most intimate act of self-love?',
-  'water is utility': 'What if water is the luxury we\'ve forgotten?',
-  'habit formation is hard': 'What if the habit already exists (breathing, eating) and we just need to sync with it?',
-  'behavior change is slow': 'What if the behavior is already happening—we just need to amplify what\'s already there?',
+export async function generateConstraintReversal(c: LateralThinkingContext): Promise<ConstraintReversalResult> {
+  const { problem, target, language = 'en', domain } = c
 
-  // Arabic
-  'الناس تنسى': 'ماذا لو كان النسيان هو التحدي الذي يجب أن نحتفل به؟',
-  'النسيان': 'ماذا لو كان النسيان هو التحدي الذي يجب أن نحتفل به؟',
-  'التذكير مزعج': 'ماذا لو كان التذكير في الواقع دعوة للبهجة؟',
-  'شرب الماء ممل': 'ماذا لو كان الترطيب هو أكثر أعمال حب الذات حميمية؟',
-  'مجرد ماء': 'ماذا لو كان الماء هو الرفاهية التي نسيناها؟',
-  'تكوين العادة صعب': 'ماذا لو كانت العادة موجودة بالفعل (التنفس، الأكل) ونحتاج فقط للمزامنة معها؟',
-  'تغيير السلوك بطيء': 'ماذا لو كان السلوك يحدث بالفعل—ونحتاج فقط لتضخيم ما هو موجود؟'
+  if (c.useRealAI && c.provider) {
+    const trendNote = c.currentTrends ? `\nTrend context: ${c.currentTrends.primary.keywordEn}` : ''
+    try {
+      const r = await c.provider.generateCreativeText(
+        `Technique: CONSTRAINT REVERSAL. Domain: ${domain}. Problem/Constraint: ${problem}. Target: ${target}.${trendNote}
+What if the constraint itself became the SOLUTION?
+Return JSON: { "constraint":"...", "reversal":"...", "opportunity":"...", "insight":"..." }`,
+        getLateralThinkingSystemPrompt(c), c.providerConfig)
+      const p = safeParseJson(r.text)
+      if (p?.reversal && p?.insight) return p
+    } catch { console.warn('[ConstraintReversal] fallback') }
+  }
+
+  // Fallback: simple reversal logic
+  return {
+    constraint: language === 'ar' ? `التحدي: ${problem}` : `Constraint: ${problem}`,
+    reversal: language === 'ar'
+      ? `ماذا لو كان "${problem}" ليس مشكلة بل هو الحل بنفسه؟`
+      : `What if "${problem}" is not the problem — it's the very solution?`,
+    opportunity: language === 'ar'
+      ? `الفرصة: جعل التحدي ميزة تنافسية`
+      : `Opportunity: Turn the constraint into competitive advantage`,
+    insight: language === 'ar'
+      ? `القيود تحدد الإبداع — اجعل الحد نقطة قوة`
+      : `Constraints define creativity — make limitation a strength`,
+  }
+}
+
+// ─────────────────────────────────────────────
+// AGENT DEBATE  — v4: Strategy Master cites real headline
+// ─────────────────────────────────────────────
+
+const DEBATE_SYSTEM = `أنت نظام ذكاء اصطناعي إبداعي متعدد الشخصيات.
+تقمّص 3 شخصيات في نقاش داخلي حول الأفكار الإبداعية المقدمة.
+
+🔴 المتمرد الإبداعي — جريء، يكسر القواعد، عامية مصرية راقية
+🔵 سيد الاستراتيجية — بارد التفكير، يستشهد بأحداث حقيقية ومؤشرات سوقية
+🟡 العميل الصعب — صوت السوق، "طب ده هيبيع؟"
+
+قاعدة الـ Strategy Master: يجب أن يستشهد بالحدث الحقيقي المذكور (إن وُجد) ويقول بالضبط "بما إن النهاردة حصل..." أو "لأن اليوم الناس شاغلة بالها بـ..."
+أعد JSON فقط.`
+
+async function runAgentDebate(
+  raw: Omit<LateralThinkingOutput, 'agentDebate' | 'visualPrompt'>,
+  ctx: LateralThinkingContext
+): Promise<AgentDebateResult> {
+
+  if (!ctx.useRealAI || !ctx.provider) return buildFallbackDebate(raw, ctx)
+
+  const trend = ctx.currentTrends
+  const live  = trend?.liveContext
+
+  // ── Build the Strategy Master's mandatory line ──
+  const strategyMasterMandate = live
+    ? ctx.language === 'ar'
+      ? `سيد الاستراتيجية يجب أن يقول في جولته: "بما إن النهاردة حصل: '${live.topHeadline}' (${live.source}) — ${live.strategicAngle} ده بيخلي توقيت الكامبين ده ضربة معلم."`
+      : `Strategy Master MUST say in their turn: "Considering that today: '${live.topHeadline}' (${live.source}) — ${live.strategicAngle} This makes the timing of this campaign perfect."`
+    : trend
+    ? ctx.language === 'ar'
+      ? `سيد الاستراتيجية يجب أن يربط الفكرة بالتريند "${trend.primary.keyword}": ${trend.primary.currentEventSummary || trend.creativeOpportunity}`
+      : `Strategy Master MUST connect to trend "${trend.primary.keywordEn}": ${trend.creativeOpportunity}`
+    : ''
+
+  const prompt = `
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 البريف والمجال
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+المجال: ${ctx.domain}
+المشكلة: ${ctx.problem}
+الجمهور: ${ctx.target}
+${trend ? `\n[التريند الحالي] ${trend.injectionSummary}` : ''}
+${live ? `[الخبر الحقيقي اليوم] "${live.topHeadline}" — ${live.source}` : ''}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🧠 مخرجات التفكير الجانبي
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[استفزاز] ${raw.provocation.creativeInsight}
+[فرصة]    ${raw.provocation.opportunity}
+[استعارة] ${raw.analogies[0]?.metaphor || '—'}
+[عشوائي — "${raw.randomStimulus.randomWord}"] ${raw.randomStimulus.unexpectedAngle}
+[تناقض]   ${raw.oppositeThinking.paradox}
+[وسط]     ${raw.oppositeThinking.desirableMiddle}
+[عكس القيد] ${raw.constraintReversal.reversal}
+[اختراق]  ${raw.creativeBreakthrough}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎭 تعليمات النقاش الداخلي
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${strategyMasterMandate}
+
+أعد هذا JSON بالضبط:
+{
+  "voices": [
+    {
+      "agent": "Creative Rebel",
+      "stance": "موقفه في جملتين",
+      "sharpCritique": "أقوى نقطة إبداعية",
+      "contribution": "إضافته للفكرة النهائية"
+    },
+    {
+      "agent": "Strategy Master",
+      "stance": "موقفه — يجب أن يبدأ بـ 'بما إن النهاردة...' إن وُجد خبر حقيقي",
+      "sharpCritique": "السؤال الاستراتيجي الأصعب",
+      "contribution": "إضافته للفكرة النهائية",
+      "trendAngle": "كيف ربط التريند أو الخبر بالفكرة",
+      "liveEventCite": "${live ? live.topHeadline : ''}"
+    },
+    {
+      "agent": "Picky Client",
+      "stance": "موقفه في جملتين",
+      "sharpCritique": "أقوى اعتراض",
+      "contribution": "إضافته للفكرة النهائية"
+    }
+  ],
+  "conflictPoint": "نقطة الخلاف الرئيسية",
+  "resolution": "كيف تم الحل",
+  "debateSummary": "ملخص النقاش في 3 جمل بالعامية المصرية",
+  "trendConnection": "كيف تم دمج التريند أو الخبر في الفكرة النهائية",
+  "liveEventUsed": "${live?.topHeadline || ''}",
+  "finalMasterpiece": {
+    "headline": "الـ headline النهائي — مرتبط باللحظة الحالية",
+    "tagline": "الـ tagline — قصير وحاد",
+    "coreIdea": "الفكرة في جملتين",
+    "emotionalTruth": "الحقيقة العاطفية العميقة",
+    "creativeDevice": "الأداة الإبداعية",
+    "visualNotes": "المشهد البصري"
+  }
+}`
+
+  try {
+    const r = await ctx.provider.generateCreativeText(prompt, DEBATE_SYSTEM, ctx.providerConfig)
+    const parsed = safeParseJson(r.text)
+    if (parsed?.finalMasterpiece && parsed?.voices) return parsed as AgentDebateResult
+    console.warn('[AgentDebate] Bad JSON shape, fallback.')
+  } catch (err) {
+    console.warn('[AgentDebate] AI failed:', (err as any).message)
+  }
+
+  return buildFallbackDebate(raw, ctx)
+}
+
+// ─────────────────────────────────────────────
+// FALLBACK DEBATE
+// ─────────────────────────────────────────────
+
+function buildFallbackDebate(
+  raw: Omit<LateralThinkingOutput, 'agentDebate' | 'visualPrompt'>,
+  ctx: LateralThinkingContext
+): AgentDebateResult {
+  const metaphor = raw.analogies[0]?.metaphor || 'transformation'
+  const paradox  = raw.oppositeThinking.paradox
+  const trend    = ctx.currentTrends
+  const live     = trend?.liveContext
+
+  // Strategy Master's live event line
+  const liveEventCite = live
+    ? ctx.language === 'ar'
+      ? `بما إن النهاردة حصل: "${live.topHeadline}" (${live.source}) — ده بيعني إن توقيت الكامبين ده مش ممكن يكون أحسن من كده.`
+      : `Considering that today: "${live.topHeadline}" (${live.source}) — the timing for this campaign couldn't be better.`
+    : trend
+    ? ctx.language === 'ar'
+      ? `الناس دلوقتي شاغلة بالها بـ "${trend.primary.keyword}" — الفكرة دي بتتقاطع مباشرة مع ${trend.primary.emotionalCharge}.`
+      : `People right now are focused on "${trend.primary.keywordEn}" — this idea directly intersects with ${trend.primary.emotionalCharge}.`
+    : 'ربط الفكرة باللحظة الحالية يضاعف الـ relevance.'
+
+  const trendConnection = live
+    ? ctx.language === 'ar'
+      ? `الفكرة تستند إلى حدث حقيقي من اليوم: "${live.topHeadline}" — وتحوله من مجرد خبر إلى سياق عاطفي للكامبين.`
+      : `The idea is anchored in today's real event: "${live.topHeadline}" — turning news into campaign emotional context.`
+    : `ربط الفكرة بـ "${trend?.primary.keyword || 'اللحظة الحالية'}" عبر ${metaphor}.`
+
+  return {
+    voices: [
+      {
+        agent: 'Creative Rebel',
+        stance: 'الفكرة فيها جوهر — بس لازم نكسر الـ safe zone ونروح للزاوية اللي هتخوّف الكل.',
+        sharpCritique: `الاستعارة "${metaphor}" دي سلاح — استخدمها كـ mechanic للحملة كلها.`,
+        contribution: 'بنى على الـ metaphor كموقف، مش بس كصورة.',
+      },
+      {
+        agent: 'Strategy Master',
+        stance: liveEventCite,
+        sharpCritique: 'هل الجمهور هيفهم التناقض ده ويتفاعل معاه؟ وفين الـ measurable hook؟',
+        contribution: 'أضاف توقيت مثالي مبني على حدث حقيقي ومؤشر قياس واضح.',
+        trendAngle: trendConnection,
+        liveEventCite: live?.topHeadline,
+      },
+      {
+        agent: 'Picky Client',
+        stance: 'بحب الفكرة — بس الناس بتحب اللي تتعرف عليه. أول 3 ثواني لازم تمسك.',
+        sharpCritique: 'محتاج الـ hook يكون أسرع وأوضح للشريحة المستهدفة.',
+        contribution: 'ضغط على السرعة والوضوح في الـ entry point.',
+      },
+    ],
+    conflictPoint: 'التوازن بين الجرأة الإبداعية والوضوح العاطفي السريع.',
+    resolution: 'نبدأ بالوضوح في 3 ثواني، ثم نضرب بالجرأة كامتداد عضوي.',
+    debateSummary: `المتمرد أراد الجرأة الكاملة، الاستراتيجي استشهد بـ "${live?.topHeadline?.slice(0, 40) || trend?.primary.keyword || 'الحدث الحالي'}" وقال إن التوقيت مثالي، والعميل أصرّ على الوضوح. الحل: ${metaphor} كـ entry point والتناقض "${paradox}" كـ payoff.`,
+    trendConnection,
+    liveEventUsed: live?.topHeadline,
+    finalMasterpiece: {
+      headline: live
+        ? ctx.language === 'ar' ? `في اللحظة دي بالظبط — ${ctx.problem.slice(0, 25)}` : `Right at this moment — ${ctx.problem.slice(0, 25)}`
+        : ctx.language === 'ar' ? `مش ${ctx.problem.slice(0, 25)} — ده اختيار` : `Not ${ctx.problem.slice(0, 25)} — it's a choice`,
+      tagline: metaphor.charAt(0).toUpperCase() + metaphor.slice(1),
+      coreIdea: `${trendConnection} نُعيد تأطير ${ctx.problem} كقرار إنساني واعٍ.`,
+      emotionalTruth: paradox,
+      creativeDevice: live ? 'Newsjacking + Reframe' : 'Reframe — تحويل الـ problem إلى choice',
+      visualNotes: `${ctx.domain} في لحظة صمت، ${trend?.primary.lightingMood || 'إضاءة دافئة'}، كادر حميمي — تلمّح لـ "${live?.topHeadline?.slice(0, 30) || trend?.primary.keyword || ''}" بطريقة بصرية غير مباشرة.`,
+    },
+  }
+}
+
+// ─────────────────────────────────────────────
+// SYNTHESIZE — Now with all 5 techniques
+// ─────────────────────────────────────────────
+
+export async function synthesizeLateralThinking(
+  ctx: LateralThinkingContext
+): Promise<LateralThinkingOutput> {
+
+  const [provocation, analogies, randomStimulus, oppositeThinking, constraintReversal] = await Promise.all([
+    generateProvocation(ctx),
+    generateAnalogies(ctx),
+    generateRandomStimulus(ctx),
+    generateOppositeThinking(ctx),
+    generateConstraintReversal(ctx),
+  ])
+
+  const synthesizedInsight = [
+    `From provocation: ${provocation.opportunity}`,
+    `From analogies: Like a ${analogies[0]?.metaphor || 'ritual'}.`,
+    `From random ("${randomStimulus.randomWord}"): ${randomStimulus.unexpectedAngle}`,
+    `From opposite: ${oppositeThinking.desirableMiddle.split('\n')[0]}`,
+    `From constraint reversal: ${constraintReversal.insight}`,
+  ].join('\n\n')
+
+  const creativeBreakthrough = ctx.language === 'ar'
+    ? '🎯 نحتضم التناقض: اجعل النسيان مستحيلاً بجعل التذكر لا يُقاوم.'
+    : '🎯 Embrace the paradox: make forgetting impossible by making remembering irresistible.'
+
+  const raw = { provocation, analogies, randomStimulus, oppositeThinking, constraintReversal, synthesizedInsight, creativeBreakthrough }
+
+  const agentDebate = await runAgentDebate(raw, ctx)
+
+  const mp = agentDebate.finalMasterpiece
+  const visualPrompt = await generateVisualPrompt(
+    { title: mp.headline, tagline: mp.tagline, coreIdea: mp.coreIdea, visualNotes: mp.visualNotes, emotionalArc: mp.emotionalTruth },
+    ctx
+  )
+
+  return { ...raw, agentDebate, visualPrompt }
+}
+
+// ─────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────
+
+function reverseProblem(p: string): string {
+  const m: Record<string, string> = {
+    forget: 'people need permission, not reminders', boring: 'sacred ritual',
+    utilitarian: 'luxury experience', challenge: 'dormant opportunity',
+    ينسى: 'يحتاجون تحفيزاً', ممل: 'طقس مقدس', صعب: 'فرصة كامنة',
+  }
+  for (const [k, v] of Object.entries(m)) { if (p.toLowerCase().includes(k)) return v }
+  return `the opposite of "${p}"`
+}
+
+function findOpportunity(problem: string, target: string): string {
+  const m: Record<string, string> = {
+    forget: 'making action feel inevitable', sacred: 'turning practice into self-care',
+    luxury: 'positioning as premium self-gift', ينسى: 'جعل العادة بديهية', ممل: 'تحويلها لعناية ذاتية',
+  }
+  const c = (problem + ' ' + target).toLowerCase()
+  for (const [k, v] of Object.entries(m)) { if (c.includes(k)) return v }
+  return 'the deeper human need beneath the surface problem'
 }

@@ -1,8 +1,7 @@
 import {
   synthesizeLateralThinking,
   LateralThinkingContext,
-  LateralThinkingOutput,
-  constraintReversals
+  LateralThinkingOutput
 } from './lateral-thinking-agent'
 import { retrieveKnowledge, getKnowledgeInjectPrompt } from './knowledge-base'
 import * as openaiProvider from '../providers/openaiProvider'
@@ -110,14 +109,8 @@ function extractMainInsight(output: LateralThinkingOutput): string {
 }
 
 function extractConstraints(context: LateralThinkingContext): string[] {
-  // Identify reversible constraints
-  const constraints: string[] = []
-  for (const [problem, _] of Object.entries(constraintReversals)) {
-    if (context.problem.toLowerCase().includes(problem)) {
-      constraints.push(problem)
-    }
-  }
-  return constraints.length > 0 ? constraints : ['default constraint']
+  // Constraint reversal is now handled by the active AI technique
+  return [context.problem] // Return the main problem as the constraint
 }
 
 function extractOpportunities(output: LateralThinkingOutput): string[] {
