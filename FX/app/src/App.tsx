@@ -165,6 +165,7 @@ const TRANSLATIONS = {
 }
 
 export default function App() {
+  const API = import.meta.env.VITE_API_URL || "http://localhost:4002"
   const [brief, setBrief] = useState('')
   const [insight, setInsight] = useState<InsightData | null>(null)
   const [concept, setConcept] = useState<ConceptData | null>(null)
@@ -219,7 +220,7 @@ export default function App() {
   const generateInsight = async () => {
     setLoading(true)
     try {
-      const res = await fetch('http://localhost:4002/api/insight', {
+      const res = await fetch(`${API}/api/insight`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ brief, archetype, language, brandVoice: { formalLevel, metaphorLevel, intensity } })
@@ -232,7 +233,7 @@ export default function App() {
   const convertConcept = async () => {
     setLoading(true)
     try {
-      const res = await fetch('http://localhost:4002/api/concept', {
+      const res = await fetch(`${API}/api/concept`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ insight, archetype, language, brandVoice: { formalLevel, metaphorLevel, intensity } })
@@ -245,7 +246,7 @@ export default function App() {
   const writeScript = async () => {
     setLoading(true)
     try {
-      const res = await fetch('http://localhost:4002/api/script', {
+      const res = await fetch(`${API}/api/script`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ concept, archetype, language, brandVoice: { formalLevel, metaphorLevel, intensity } })

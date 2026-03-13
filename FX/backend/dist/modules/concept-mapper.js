@@ -61,20 +61,30 @@ async function mapConcept(insight, context) {
 }
 // Keep helper functions for template fallback
 function buildTitle(insight, analogy) {
+    const words = insight.split(' ').filter(w => w.length > 4);
+    const keyword = words[Math.floor(Math.random() * words.length)] || 'Vision';
     const conceptMap = {
         ritual: 'The Sacred Pause',
         celebration: 'The Daily Victory',
-        identity: 'Becoming Who You Are'
+        identity: 'Becoming Who You Are',
+        transformation: 'The Metamorphosis',
+        connection: 'The Human Thread'
     };
     for (const [key, title] of Object.entries(conceptMap)) {
         if (insight.toLowerCase().includes(key) || analogy?.sourceField?.toLowerCase().includes(key))
             return title;
     }
-    return 'The Moment That Matters';
+    return `The ${keyword} Protocol`;
 }
 function buildTagline(insight, randomWord) {
-    return 'The moment you choose yourself';
+    const templates = [
+        `Where ${randomWord} meets intentionality.`,
+        `The science of ${randomWord}.`,
+        `Unexpectedly ${randomWord}.`,
+        `A new frequency of ${randomWord}.`
+    ];
+    return templates[Math.floor(Math.random() * templates.length)];
 }
 function buildCoreIdea(insight, analogy, paradox) {
-    return `This isn't a ${analogy.sourceField} — it's a ${analogy.metaphor}.\n\nInsight: ${insight}`;
+    return `We reposition the product from a utilitarian tool to a symbolic ${analogy.metaphor}.\n\nBy framing it as a ${analogy.sourceField}, we unlock a deeper emotional truth: ${insight}`;
 }

@@ -110,14 +110,8 @@ function extractMainInsight(output) {
     return breakthrough[1] || output.synthesizedInsight;
 }
 function extractConstraints(context) {
-    // Identify reversible constraints
-    const constraints = [];
-    for (const [problem, _] of Object.entries(lateral_thinking_agent_1.constraintReversals)) {
-        if (context.problem.toLowerCase().includes(problem)) {
-            constraints.push(problem);
-        }
-    }
-    return constraints.length > 0 ? constraints : ['default constraint'];
+    // Constraint reversal is now handled by the active AI technique
+    return [context.problem]; // Return the main problem as the constraint
 }
 function extractOpportunities(output) {
     // Gather opportunities from all techniques

@@ -1,5 +1,6 @@
 import express, { Request, Response } from 'express'
 import cors from 'cors'
+import dotenv from 'dotenv'
 import { generateInsight } from './modules/insight-generator'
 import { mapConcept } from './modules/concept-mapper'
 import { writeScript } from './modules/script-writer'
@@ -8,6 +9,7 @@ import * as vertexProvider from './providers/googleVertexProvider'
 import * as openaiProvider from './providers/openaiProvider'
 
 const app = express()
+dotenv.config()
 app.use(cors())
 app.use(express.json())
 
@@ -161,7 +163,7 @@ app.get('/api/providers/status', (_req: Request, res: Response) => {
 })
 
 const port = process.env.PORT || 4002
-app.listen(port, () => {
+app.listen(port, '0.0.0.0', () => {
   console.log(`
 ╔══════════════════════════════════════════════════════════╗
 ║         🎬 TextFX Backend — Lateral Thinking Agent      ║

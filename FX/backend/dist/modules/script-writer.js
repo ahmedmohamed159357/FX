@@ -47,12 +47,17 @@ async function writeScript(concept, context) {
         }
     }
     // Fallback to Template
+    const title = conceptTitle.toUpperCase();
     return {
-        script: `INT. A MOMENT IN TIME\n\nConcept: ${conceptTitle}\nTagline: ${tagline}\n\nBEAT 1: Recognition\nBEAT 2: Surrender\nBEAT 3: Arrival\n\nSUPER: ${tagline}`,
-        beats: ['Recognition', 'Surrender', 'Arrival'],
-        cameraLanguage: 'Close, warm, intentional.',
-        narrativeStrategy: 'Emotional subversion.',
-        emotionalTurning: 'Obligation → Identity',
+        script: `SCENE 1: THE DISCOVERY\n\nWe open on a world of noise. Tension. The pace is unbearable.\n\nThen, we see it. ${conceptTitle}. A silent anchor in the chaos.\n\nBEAT 1: RECOGNITION\nThe protagonist stops. The camera lingering on the detail that others miss.\n\nBEAT 2: THE SHIFT\nA deep breath. A decision made in silence. The visual tone shifts from cold to warm gold.\n\nBEAT 3: ARRIVAL\nFinal frame: Absolute clarity.\n\nNARRATOR (V.O.)\n${tagline}\n\nLOGO: ${title}`,
+        beats: [
+            'The world stops for a second.',
+            'A choice is made between the loud and the true.',
+            'Clarity settles in like a light fog lifting.'
+        ],
+        cameraLanguage: 'Cinematic wide shots transitioning to intimate, textural macros.',
+        narrativeStrategy: 'Visual silence as a premium differentiator.',
+        emotionalTurning: 'Chaos → Connection → Clarity',
         lateralThinkingTechniques: ['Template Scripting']
     };
 }
