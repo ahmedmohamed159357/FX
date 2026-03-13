@@ -26,34 +26,34 @@ function finish {
 trap finish EXIT
 
 # 1) Backend: install, build, start
-if [ -d "$ROOT_DIR/backend" ]; then
+if [ -d "$ROOT_DIR/FX/backend" ]; then
   echo "-> Backend detected. Installing deps..."
-  (cd "$ROOT_DIR/backend" && npm install)
+  (cd "$ROOT_DIR/FX/backend" && npm install)
   echo "-> Building backend..."
-  (cd "$ROOT_DIR/backend" && npm run build || true)
+  (cd "$ROOT_DIR/FX/backend" && npm run build || true)
   echo "-> Starting backend (port $PORT)..."
-  nohup bash -lc "cd '$ROOT_DIR/backend' && node dist/index.js" > "$LOG_DIR/backend.log" 2>&1 &
+  nohup bash -lc "cd '$ROOT_DIR/FX/backend' && node dist/index.js" > "$LOG_DIR/backend.log" 2>&1 &
   pids+=($!)
   echo "   backend PID ${pids[-1]} (logs: $LOG_DIR/backend.log)"
 else
-  echo "-> No backend folder found at $ROOT_DIR/backend"
+  echo "-> No backend folder found at $ROOT_DIR/FX/backend"
 fi
 
 # wait a bit for backend to boot
 sleep 2
 
 # 2) Frontend: install, build, serve
-if [ -d "$ROOT_DIR/app" ]; then
+if [ -d "$ROOT_DIR/FX/app" ]; then
   echo "-> Frontend detected. Installing deps..."
-  (cd "$ROOT_DIR/app" && npm install)
+  (cd "$ROOT_DIR/FX/app" && npm install)
   echo "-> Building frontend..."
-  (cd "$ROOT_DIR/app" && npm run build)
+  (cd "$ROOT_DIR/FX/app" && npm run build)
   echo "-> Serving frontend on port 5173..."
-  nohup bash -lc "cd '$ROOT_DIR/app' && npx serve -s dist -l 5173" > "$LOG_DIR/frontend.log" 2>&1 &
+  nohup bash -lc "cd '$ROOT_DIR/FX/app' && npx serve -s dist -l 5173" > "$LOG_DIR/frontend.log" 2>&1 &
   pids+=($!)
   echo "   frontend PID ${pids[-1]} (logs: $LOG_DIR/frontend.log)"
 else
-  echo "-> No frontend folder found at $ROOT_DIR/app"
+  echo "-> No frontend folder found at $ROOT_DIR/FX/app"
 fi
 
 echo
