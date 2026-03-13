@@ -10,6 +10,7 @@ The repository has been successfully configured to run locally. All required cha
 - **Updated `src/index.ts`**:
   - Added `import 'dotenv/config'` and `dotenv.config()`
   - Changed `app.listen(port)` to `app.listen(port, '0.0.0.0')` for local access
+  - Fixed port parsing: `const port = parseInt(process.env.PORT || '4002', 10)`
 - **Verified existing setup**:
   - CORS enabled for cross-origin requests
   - Health endpoint at `/health` exists
