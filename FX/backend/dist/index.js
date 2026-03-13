@@ -38,6 +38,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
+const dotenv_1 = __importDefault(require("dotenv"));
 const insight_generator_1 = require("./modules/insight-generator");
 const concept_mapper_1 = require("./modules/concept-mapper");
 const script_writer_1 = require("./modules/script-writer");
@@ -45,6 +46,7 @@ const lateral_thinking_agent_1 = require("./modules/lateral-thinking-agent");
 const vertexProvider = __importStar(require("./providers/googleVertexProvider"));
 const openaiProvider = __importStar(require("./providers/openaiProvider"));
 const app = (0, express_1.default)();
+dotenv_1.default.config();
 app.use((0, cors_1.default)());
 app.use(express_1.default.json());
 // Health check
@@ -183,8 +185,8 @@ app.get('/api/providers/status', (_req, res) => {
     };
     res.json(status);
 });
-const port = process.env.PORT || 4002;
-app.listen(port, () => {
+const port = parseInt(process.env.PORT || '4002', 10);
+app.listen(port, '0.0.0.0', () => {
     console.log(`
 ╔══════════════════════════════════════════════════════════╗
 ║         🎬 TextFX Backend — Lateral Thinking Agent      ║
