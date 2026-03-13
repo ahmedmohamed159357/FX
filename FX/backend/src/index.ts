@@ -162,7 +162,7 @@ app.get('/api/providers/status', (_req: Request, res: Response) => {
   res.json(status)
 })
 
-const port = process.env.PORT || 4002
+const port = parseInt(process.env.PORT || '4002', 10)
 app.listen(port, '0.0.0.0', () => {
   console.log(`
 ╔══════════════════════════════════════════════════════════╗
