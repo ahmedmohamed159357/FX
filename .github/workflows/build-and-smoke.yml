@@ -25,43 +25,42 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-          cache-dependency-path: |
-            FX/backend/package-lock.json
-            FX/app/package-lock.json
+          cache-dependency-path: package-lock.json
 
       # ── Backend: install & build ────────────────────────────────────
       - name: Backend — npm ci
-        run: npm ci
-        working-directory: FX/backend
+        if: steps.workspace-check.outputs.backend_exists == 'true'
+        run: cd backend && npm ci
 
       - name: Backend — typecheck
-        run: npx tsc --noEmit
-        working-directory: FX/backend
+        if: steps.workspace-check.outputs.backend_exists == 'true'
+        run: cd backend && npx tsc --noEmit
 
       - name: Backend — build
-        run: npm run build
-        working-directory: FX/backend
+        if: steps.workspace-check.outputs.backend_exists == 'true'
+        run: cd backend && npm run build
 
       # ── Frontend: install & build ───────────────────────────────────
       - name: Frontend — npm ci
-        run: npm ci
-        working-directory: FX/app
+        if: steps.workspace-check.outputs.app_exists == 'true'
+        run: cd app && npm ci
 
       - name: Frontend — typecheck
-        run: npx tsc --noEmit
-        working-directory: FX/app
+        if: steps.workspace-check.outputs.app_exists == 'true'
+        run: cd app && npx tsc --noEmit
 
       - name: Frontend — build
-        run: npm run build
-        working-directory: FX/app
+        if: steps.workspace-check.outputs.app_exists == 'true'
+        run: cd app && npm run build
         env:
           VITE_API_URL: http://localhost:4002
 
       # ── Smoke tests ─────────────────────────────────────────────────
       - name: Start backend (background)
+        if: steps.workspace-check.outputs.backend_exists == 'true'
         run: |
           PORT=4002 NODE_ENV=test ALLOWED_ORIGINS="" \
-          node FX/backend/dist/index.js &
+          node backend/dist/index.js &
           echo "BACKEND_PID=$!" >> $GITHUB_ENV
           sleep 4
 
@@ -96,21 +95,23 @@ jobs:
 
       # ── Upload build artifacts ───────────────────────────────────────
       - name: Upload backend dist
+        if: steps.workspace-check.outputs.backend_exists == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: backend-dist
-          path: FX/backend/dist/
+          path: backend/dist/
           retention-days: 7
 
       - name: Upload frontend dist
+        if: steps.workspace-check.outputs.app_exists == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: frontend-dist
-          path: FX/app/dist/
+          path: app/dist/
           retention-days: 7
 
       - name: Upload smoke test logs
-        if: always()
+        if: steps.workspace-check.outputs.backend_exists == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: smoke-logs

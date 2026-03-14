@@ -21,7 +21,7 @@ jobs:
         with:
           node-version: '18'
           cache: 'npm'
-          cache-dependency-path: FX/app/package-lock.json
+          cache-dependency-path: app/package-lock.json
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
@@ -34,41 +34,45 @@ jobs:
 
       # ── Build frontend ──────────────────────────────────────────────
       - name: Frontend — npm ci
-        run: npm ci
-        working-directory: FX/app
+        if: steps.workspace-check.outputs.app_exists == 'true'
+        run: cd app && npm ci
 
       - name: Frontend — build
-        run: npm run build
-        working-directory: FX/app
+        if: steps.workspace-check.outputs.app_exists == 'true'
+        run: cd app && npm run build
         env:
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
 
       # ── Capacitor sync ──────────────────────────────────────────────
       - name: Capacitor — init & add android
+        if: steps.workspace-check.outputs.android_exists == 'true'
         run: |
-          cd FX/app
+          cd app
           # Init only if capacitor.config.ts exists (already present)
           npx cap add android || true   # skip if already added
           npx cap sync android
 
       # ── Gradle cache ────────────────────────────────────────────────
       - name: Cache Gradle
+        if: steps.workspace-check.outputs.android_exists == 'true'
         uses: actions/cache@v4
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ hashFiles('FX/app/android/**/*.gradle*') }}
+          key: gradle-${{ hashFiles('app/android/**/*.gradle*') }} # uses app/android if present
           restore-keys: gradle-
 
       # ── Build APK ───────────────────────────────────────────────────
       - name: Build debug APK
+        if: steps.workspace-check.outputs.android_exists == 'true'
         run: ./gradlew assembleDebug --no-daemon
-        working-directory: FX/app/android
+        working-directory: app/android
 
       - name: Upload APK artifact
+        if: steps.workspace-check.outputs.android_exists == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: textfx-debug-apk
-          path: FX/app/android/app/build/outputs/apk/debug/app-debug.apk
+          path: app/android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 14

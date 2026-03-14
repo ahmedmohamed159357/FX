@@ -11,7 +11,7 @@ git add .gitignore package-lock.json \
   fix-ci-and-gitignore.sh workflow_edits.md changes_summary.md cleanup.log validation.log commands_to_push.txt
 
 # 3) Commit
-git commit -m "Fix CI workflows and .gitignore; sync lockfile"
+git commit -m "Fix CI workflows and .gitignore; sync lockfile; update paths post-FX-move"
 
 # 4) Push
 git push -u origin fix/ci-gitignore-workspace-20260314-0622
