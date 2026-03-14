@@ -1,456 +1,538 @@
-import React, { useState, useEffect } from 'react'
+/**
+ * TextFX v5 — Mobile-First Production Frontend
+ * Features: ErrorBoundary · dark/light persistence · fetchWithRetry + AbortController
+ *           auto-scroll refs · aria attributes · safe-area · no embedded secrets
+ */
+import React, { useState, useEffect, useRef, Component, ErrorInfo, ReactNode } from 'react'
 import { jsPDF } from 'jspdf'
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ErrorBoundary
+// ─────────────────────────────────────────────────────────────────────────────
+interface EBState { hasError: boolean; message: string }
+class ErrorBoundary extends Component<{ children: ReactNode }, EBState> {
+  state: EBState = { hasError: false, message: '' }
+
+  static getDerivedStateFromError(err: Error): EBState {
+    return { hasError: true, message: err.message }
+  }
+  componentDidCatch(err: Error, info: ErrorInfo) {
+    console.error(JSON.stringify({ level:'error', ts: new Date().toISOString(),
+      msg: 'ErrorBoundary caught', error: err.message, componentStack: info.componentStack }))
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div role="alert" className="error-boundary">
+          <h2>Something went wrong</h2>
+          <p>{this.state.message}</p>
+          <button className="btn btn-primary" onClick={() => this.setState({ hasError:false, message:'' })}>
+            Try Again
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────────────────────────────────────
 interface InsightData {
   mainInsight: string
   lateralThinkingBreakdown: {
-    provocation: {
-      provocation: string
-      reversal: string
-      opportunity: string
-    }
-    analogies: {
-      sourceField: string
-      metaphor: string
-    }[]
-    randomStimulus: {
-      randomWord: string
-      unexpectedAngle: string
-      visualMetaphor: string
-    }
-    oppositeThinking: {
-      desirableMiddle: string
-      paradox: string
+    provocation:    { provocation:string; reversal:string; opportunity:string }
+    analogies:      { sourceField:string; metaphor:string }[]
+    randomStimulus: { randomWord:string; unexpectedAngle:string; visualMetaphor:string }
+    oppositeThinking: { desirableMiddle:string; paradox:string }
+  }
+  constraints: string[]; opportunities: string[]
+  metaphoricFraming:string; emotionalTruth:string; creativeMethod:string
+}
+interface ConceptData {
+  title:string; tagline:string; coreIdea:string
+  visualNotes:string; creativeDevice:string; emotionalArc:string; targetParadox:string
+}
+interface ScriptData {
+  script:string; beats:string[]; cameraLanguage:string
+  narrativeStrategy:string; emotionalTurning:string
+}
+type Iteration = {
+  timestamp:number; brief:string; archetype:string
+  brandVoice:{ formalLevel:number; metaphorLevel:number; intensity:number }
+  language:'en'|'ar'
+  insight:InsightData|null; concept:ConceptData|null; script:ScriptData|null
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HTTP helper — AbortController + 1 retry + 60s timeout
+// ─────────────────────────────────────────────────────────────────────────────
+async function apiFetch(url:string, options:RequestInit, retries=1): Promise<Response> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 60_000)
+    try {
+      const res = await fetch(url, { ...options, signal: controller.signal })
+      clearTimeout(timer)
+      if (!res.ok) {
+        const text = await res.text().catch(() => '')
+        throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status, body: text })
+      }
+      return res
+    } catch (err: unknown) {
+      clearTimeout(timer)
+      if (attempt === retries) throw err
+      const e = err as Error
+      if (e.name === 'AbortError') throw Object.assign(new Error('TIMEOUT'), { code:'TIMEOUT' })
+      await new Promise(r => setTimeout(r, 800))
     }
   }
-  constraints: string[]
-  opportunities: string[]
-  metaphoricFraming: string
-  emotionalTruth: string
-  creativeMethod: string
+  throw new Error('unreachable')
 }
 
-interface ConceptData {
-  title: string
-  tagline: string
-  coreIdea: string
-  visualNotes: string
-  creativeDevice: string
-  emotionalArc: string
-  targetParadox: string
-}
-
-interface ScriptData {
-  script: string
-  beats: string[]
-  cameraLanguage: string
-  narrativeStrategy: string
-  emotionalTurning: string
-}
-
-type Iteration = {
-  timestamp: number
-  brief: string
-  archetype: string
-  brandVoice: { formalLevel: number; metaphorLevel: number; intensity: number }
-  language: 'en' | 'ar'
-  insight: InsightData | null
-  concept: ConceptData | null
-  script: ScriptData | null
-}
-
-const TRANSLATIONS = {
+// ─────────────────────────────────────────────────────────────────────────────
+// i18n
+// ─────────────────────────────────────────────────────────────────────────────
+const T = {
   en: {
-    title: "TEXTFX",
-    tagline: "The Elite Creative Director for Lateral Thinking & Copywriting",
-    light: "Light",
-    dark: "Dark",
-    savedIterations: "Archive",
-    latest: "Latest",
-    comparing: "Comparing:",
-    clear: "Clear",
-    brandPersonality: "Brand Soul & Archetype",
-    tone: "Tone Scale",
-    languageStyle: "Metaphorical Scale",
-    intensity: "Intensity",
-    briefTitle: "The Brief (Creative Input)",
-    briefPlaceholder: "Establish the product, the human tension, and the goal of this manifestation...",
-    generateBtn: "Ignite Insight",
-    thinking: "Deep Processing...",
-    writing: "Manifesting Copy...",
-    insightTitle: "Strategic Insight",
-    method: "Method",
-    convertBtn: "Evolve to Concept",
-    conceptTitle: "Creative Conception",
-    creativeDevice: "Strategic Device",
-    emotionalArc: "The Arc",
-    visualNotes: "Atmospheric Notes",
-    targetParadox: "Paradox Locked",
-    writeScriptBtn: "Manifest Script",
-    scriptTitle: "Cinematic Manifestation",
-    emotionalBeats: "Emotional Beats",
-    cameraLanguage: "Visual Aesthetics",
-    narrativeStrategy: "Narrative Logic",
-    copyScript: "Copy Script",
-    exportPdf: "Export Masterpiece",
-    formal: "Formal",
-    casual: "Casual",
-    balanced: "Balanced",
-    metaphorical: "Metaphorical",
-    literal: "Literal",
-    mixed: "Mixed",
-    high: "High",
-    subtle: "Subtle",
-    standard: "Standard",
-    ConstraintReversal: { title: "Constraint Reversal", desc: "Invert limitations into assets." },
-    MetaphorMining: { title: "Metaphor Mining", desc: "Extract symbols to reframe reality." },
-    TensionMapping: { title: "Tension Mapping", desc: "Expose the conflict that fuels desire." },
-    RandomStimulus: { title: "Random Stimulus", desc: "Bridge disconnected worlds." },
-    OppositeThinking: { title: "Opposite Thinking", desc: "Discover truth in the extremes." },
-    reversals: "Logic Inversions",
-    metaphors: "Symbolic Links",
-    tensions: "Conflict Paths",
+    title:'TEXTFX', tagline:'The Elite Creative Director for Lateral Thinking & Copywriting',
+    brandPersonality:'Brand Soul & Archetype',
+    tone:'Tone', languageStyle:'Metaphor Scale', intensity:'Intensity',
+    briefTitle:'The Brief', briefPlaceholder:'Describe the product, human tension, and creative goal…',
+    generateBtn:'Ignite Insight', thinking:'Deep Processing…', writing:'Manifesting…',
+    insightTitle:'Strategic Insight', convertBtn:'Evolve to Concept',
+    conceptTitle:'Creative Conception', writeScriptBtn:'Manifest Script', scriptTitle:'Cinematic Script',
+    emotionalBeats:'Emotional Beats', cameraLanguage:'Visual Aesthetics',
+    copyScript:'Copy Script', exportPdf:'Export PDF',
+    reversals:'Logic Inversions', metaphors:'Symbolic Links',
+    creativeDevice:'Strategic Device', emotionalArc:'The Arc',
+    savedIterations:'Archive', clear:'Clear',
+    formal:'Formal', casual:'Casual', balanced:'Balanced',
+    metaphorical:'Metaphorical', literal:'Literal', mixed:'Mixed',
+    high:'High', subtle:'Subtle', standard:'Standard',
+    networkErr:'⚠️ Cannot reach server. Check your connection.',
+    timeoutErr:'⏳ Request timed out — the AI is busy. Try again.',
+    serverErr: '⚠️ Server error. Try again.',
+    retry:'Retry',
   },
   ar: {
-    title: "TEXTFX",
-    tagline: "المحرك الإبداعي النخبوي للتفكير الجانبي وصناعة المحتوى",
-    light: "نهاري",
-    dark: "ليلي",
-    savedIterations: "الأرشيف الإبداعي",
-    latest: "الأحدث",
-    comparing: "مقارنة:",
-    clear: "مسح",
-    brandPersonality: "روح العلامة والشخصية",
-    tone: "مقياس النبرة",
-    languageStyle: "مقياس المجاز",
-    intensity: "الحدة",
-    briefTitle: "الملخص الإبداعي (المدخلات)",
-    briefPlaceholder: "حدد المنتج، التوتر الإنساني، والهدف من هذا التجلي الإبداعي...",
-    generateBtn: "إشعال البصيرة",
-    thinking: "جاري المعالجة العميقة...",
-    writing: "جاري تجلي النص...",
-    insightTitle: "البصيرة الاستراتيجية",
-    method: "المنهجية",
-    convertBtn: "تطوير إلى مفهوم",
-    conceptTitle: "التصور الإبداعي",
-    creativeDevice: "الأداة الاستراتيجية",
-    emotionalArc: "المسار العاطفي",
-    visualNotes: "ملاحظات الأجواء",
-    targetParadox: "المفارقة المركزية",
-    writeScriptBtn: "تحويل لسيناريو",
-    scriptTitle: "التجلي السينمائي",
-    emotionalBeats: "النبضات العاطفية",
-    cameraLanguage: "الجماليات البصرية",
-    narrativeStrategy: "المنطق السردي",
-    copyScript: "نسخ النص",
-    exportPdf: "تصدير العمل",
-    formal: "رسمي",
-    casual: "عفوي",
-    balanced: "متوازن",
-    metaphorical: "مجازي",
-    literal: "حرفي",
-    mixed: "مختلط",
-    high: "مرتفع",
-    subtle: "هادئ",
-    standard: "قياسي",
-    ConstraintReversal: { title: "عكس القيود", desc: "تحويل العوائق إلى أصول إبداعية." },
-    MetaphorMining: { title: "تعدين المجاز", desc: "استخراج الرموز لإعادة تعريف الواقع." },
-    TensionMapping: { title: "خريطة التوتر", desc: "كشف الصراع الذي يغذي الرغبة." },
-    RandomStimulus: { title: "المحفز العشوائي", desc: "جسور بين عوالم غير مترابطة." },
-    OppositeThinking: { title: "التفكير العكسي", desc: "اكتشاف الحقيقة في الأطراف." },
-    reversals: "انقلابات المنطق",
-    metaphors: "الروابط الرمزية",
-    tensions: "مسارات الصراع",
+    title:'TEXTFX', tagline:'المحرك الإبداعي النخبوي للتفكير الجانبي وصناعة المحتوى',
+    brandPersonality:'روح العلامة والشخصية',
+    tone:'النبرة', languageStyle:'مقياس المجاز', intensity:'الحدة',
+    briefTitle:'الملخص الإبداعي', briefPlaceholder:'حدد المنتج، التوتر الإنساني، والهدف الإبداعي…',
+    generateBtn:'إشعال البصيرة', thinking:'جاري المعالجة العميقة…', writing:'جاري التجلي…',
+    insightTitle:'البصيرة الاستراتيجية', convertBtn:'تطوير إلى مفهوم',
+    conceptTitle:'التصور الإبداعي', writeScriptBtn:'تحويل لسيناريو', scriptTitle:'التجلي السينمائي',
+    emotionalBeats:'النبضات العاطفية', cameraLanguage:'الجماليات البصرية',
+    copyScript:'نسخ النص', exportPdf:'تصدير PDF',
+    reversals:'انقلابات المنطق', metaphors:'الروابط الرمزية',
+    creativeDevice:'الأداة الاستراتيجية', emotionalArc:'المسار العاطفي',
+    savedIterations:'الأرشيف', clear:'مسح',
+    formal:'رسمي', casual:'عفوي', balanced:'متوازن',
+    metaphorical:'مجازي', literal:'حرفي', mixed:'مختلط',
+    high:'مرتفع', subtle:'هادئ', standard:'قياسي',
+    networkErr:'⚠️ لا يمكن الوصول للخادم. تحقق من الاتصال.',
+    timeoutErr:'⏳ انتهت مهلة الطلب — الذكاء الاصطناعي مشغول. حاول مجدداً.',
+    serverErr: '⚠️ خطأ في الخادم. حاول مجدداً.',
+    retry:'إعادة المحاولة',
   }
+} as const
+type Lang = keyof typeof T
+
+const ARCHETYPES = [
+  { name:'The Outlaw',   nameAr:'المتمرد',        icon:'💀', desc:'Rebellious, rule-breaking', descAr:'متمرد، يكسر القواعد' },
+  { name:'The Magician', nameAr:'الساحر',         icon:'✨', desc:'Visionary, transformative',  descAr:'رؤيوي، تحويلي' },
+  { name:'The Hero',     nameAr:'البطل',          icon:'🛡️', desc:'Courageous, masterful',      descAr:'شجاع، متمكن' },
+  { name:'The Lover',    nameAr:'المحب',          icon:'❤️', desc:'Intimate, passionate',       descAr:'حميمي، شغوف' },
+  { name:'The Jester',   nameAr:'المهرج',         icon:'🤡', desc:'Playful, disruptive',        descAr:'مرح، متمرد' },
+  { name:'The Everyman', nameAr:'الإنسان العادي', icon:'🤝', desc:'Reliable, connected',        descAr:'موثوق، مرتبط بالناس' },
+  { name:'The Caregiver',nameAr:'الراعي',         icon:'🤲', desc:'Nurturing, protective',      descAr:'حاضن، حامي' },
+  { name:'The Ruler',    nameAr:'الحاكم',         icon:'👑', desc:'Authoritative, stable',      descAr:'سلطوي، مستقر' },
+  { name:'The Creator',  nameAr:'المبدع',         icon:'🎨', desc:'Innovative, original',       descAr:'مبتكر، أصيل' },
+  { name:'The Innocent', nameAr:'البريء',         icon:'☀️', desc:'Optimistic, pure',           descAr:'متفائل، نقي' },
+  { name:'The Sage',     nameAr:'الحكيم',         icon:'🧠', desc:'Wise, analytical',           descAr:'حكيم، تحليلي' },
+  { name:'The Explorer', nameAr:'المستكشف',       icon:'🧭', desc:'Adventurous, free',          descAr:'مغامر، حر' },
+]
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Scroll helper
+// ─────────────────────────────────────────────────────────────────────────────
+function scrollTo(ref: React.RefObject<HTMLElement | null>) {
+  setTimeout(() => {
+    ref.current?.scrollIntoView({ behavior:'smooth', block:'start' })
+    ref.current?.setAttribute('tabIndex','-1')
+    ref.current?.focus({ preventScroll: true })
+  }, 120)
 }
 
-export default function App() {
-  const API = import.meta.env.VITE_API_URL || "http://localhost:4002"
-  const [brief, setBrief] = useState('')
-  const [insight, setInsight] = useState<InsightData | null>(null)
-  const [concept, setConcept] = useState<ConceptData | null>(null)
-  const [script, setScript] = useState<ScriptData | null>(null)
+// ─────────────────────────────────────────────────────────────────────────────
+// Main App
+// ─────────────────────────────────────────────────────────────────────────────
+function App() {
+  const API = import.meta.env.VITE_API_URL || 'http://localhost:4002'
+
+  const [brief,  setBrief]  = useState('')
+  const [insight, setInsight] = useState<InsightData|null>(null)
+  const [concept, setConcept] = useState<ConceptData|null>(null)
+  const [script,  setScript]  = useState<ScriptData|null>(null)
   const [loading, setLoading] = useState(false)
+  const [error,   setError]   = useState<string|null>(null)
   const [iterations, setIterations] = useState<Iteration[]>([])
-  const [dark, setDark] = useState(true)
 
-  const [language, setLanguage] = useState<'en' | 'ar'>(() => {
-    if (typeof window !== 'undefined') {
-      return (localStorage.getItem('textfx_language') as 'en' | 'ar') || 'en'
-    }
-    return 'en'
+  const [dark, setDark] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true
+    return localStorage.getItem('textfx_dark') !== 'false'
   })
+  const [lang, setLang] = useState<Lang>(() => {
+    if (typeof window === 'undefined') return 'en'
+    return (localStorage.getItem('textfx_lang') as Lang) || 'en'
+  })
+  const [archetype,    setArchetype]    = useState('The Sage')
+  const [formalLevel,  setFormalLevel]  = useState(5)
+  const [metaphorLevel,setMetaphorLevel]= useState(5)
+  const [intensity,    setIntensity]    = useState(5)
 
-  const t = TRANSLATIONS[language]
-  const isRtl = language === 'ar'
+  const insightRef = useRef<HTMLElement>(null)
+  const conceptRef = useRef<HTMLElement>(null)
+  const scriptRef  = useRef<HTMLElement>(null)
 
-  const [archetype, setArchetype] = useState('The Sage')
-  const [formalLevel, setFormalLevel] = useState(5)
-  const [metaphorLevel, setMetaphorLevel] = useState(5)
-  const [intensity, setIntensity] = useState(5)
-
-  const archetypes = [
-    { name: 'The Outlaw', nameAr: 'المتمرد', icon: '💀', desc: 'Rebellious, wild, rule-breaking', descAr: 'متمرد، جامح، يكسر القواعد' },
-    { name: 'The Magician', nameAr: 'الساحر', icon: '✨', desc: 'Visionary, transformative', descAr: 'رؤيوي، تحويلي' },
-    { name: 'The Hero', nameAr: 'البطل', icon: '🛡️', desc: 'Courageous, masterful', descAr: 'شجاع، متمكن' },
-    { name: 'The Lover', nameAr: 'المحب', icon: '❤️', desc: 'Intimate, passionate', descAr: 'حميمي، شغوف' },
-    { name: 'The Jester', nameAr: 'المهرج', icon: '🤡', desc: 'Playful, disruptive', descAr: 'مرح، متمرد' },
-    { name: 'The Everyman', nameAr: 'الإنسان العادي', icon: '🤝', desc: 'Reliable, connected', descAr: 'موثوق، مرتبط بالناس' },
-    { name: 'The Caregiver', nameAr: 'الراعي', icon: '🤲', desc: 'Nurturing, protective', descAr: 'حاضن، حامي' },
-    { name: 'The Ruler', nameAr: 'الحاكم', icon: '👑', desc: 'Authoritative, stable', descAr: 'سلطوي، مستقر' },
-    { name: 'The Creator', nameAr: 'المبدع', icon: '🎨', desc: 'Innovative, original', descAr: 'مبتكر، أصيل' },
-    { name: 'The Innocent', nameAr: 'البريء', icon: '☀️', desc: 'Optimistic, pure', descAr: 'متفائل، نقي' },
-    { name: 'The Sage', nameAr: 'الحكيم', icon: '🧠', desc: 'Wise, analytical', descAr: 'حكيم، تحليلي' },
-    { name: 'The Explorer', nameAr: 'المستكشف', icon: '🧭', desc: 'Adventurous, free', descAr: 'مغامر، حر' }
-  ]
+  const t    = T[lang]
+  const isRtl = lang === 'ar'
 
   useEffect(() => {
-    document.documentElement.dir = isRtl ? 'rtl' : 'ltr'
-    document.documentElement.lang = language
-    localStorage.setItem('textfx_language', language)
-  }, [language, isRtl])
+    document.documentElement.dir  = isRtl ? 'rtl' : 'ltr'
+    document.documentElement.lang = lang
+    localStorage.setItem('textfx_lang', lang)
+  }, [lang, isRtl])
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
+    localStorage.setItem('textfx_dark', String(dark))
+  }, [dark])
 
   useEffect(() => {
     const saved = localStorage.getItem('textfx_iterations')
-    if (saved) {
-      try { setIterations(JSON.parse(saved)) } catch { }
-    }
+    if (saved) { try { setIterations(JSON.parse(saved)) } catch { /* ignore */ } }
   }, [])
 
-  const generateInsight = async () => {
-    setLoading(true)
+  function handleError(err: unknown) {
+    const e = err as { code?:string; message?:string; status?:number }
+    if (e?.code === 'TIMEOUT' || e?.message === 'TIMEOUT') return setError(t.timeoutErr)
+    if (e?.message?.includes('NETWORK') || e?.message?.includes('Failed to fetch')) return setError(t.networkErr)
+    setError(t.serverErr)
+    console.error(JSON.stringify({ level:'error', ts:new Date().toISOString(), error: e?.message }))
+  }
+
+  const doGenerateInsight = async () => {
+    setLoading(true); setError(null)
     try {
-      const res = await fetch(`${API}/api/insight`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brief, archetype, language, brandVoice: { formalLevel, metaphorLevel, intensity } })
+      const res = await apiFetch(`${API}/api/insight`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ brief, archetype, language:lang, brandVoice:{ formalLevel,metaphorLevel,intensity } })
       })
-      setInsight(await res.json())
-    } catch (e) { console.error(e) }
+      setInsight(await res.json()); setConcept(null); setScript(null)
+      scrollTo(insightRef)
+    } catch (e) { handleError(e) }
     finally { setLoading(false) }
   }
 
-  const convertConcept = async () => {
-    setLoading(true)
+  const doConvertConcept = async () => {
+    setLoading(true); setError(null)
     try {
-      const res = await fetch(`${API}/api/concept`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ insight, archetype, language, brandVoice: { formalLevel, metaphorLevel, intensity } })
+      const res = await apiFetch(`${API}/api/concept`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ insight, archetype, language:lang, brandVoice:{ formalLevel,metaphorLevel,intensity } })
       })
-      setConcept(await res.json())
-    } catch (e) { console.error(e) }
+      setConcept(await res.json()); setScript(null)
+      scrollTo(conceptRef)
+    } catch (e) { handleError(e) }
     finally { setLoading(false) }
   }
 
-  const writeScript = async () => {
-    setLoading(true)
+  const doWriteScript = async () => {
+    setLoading(true); setError(null)
     try {
-      const res = await fetch(`${API}/api/script`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ concept, archetype, language, brandVoice: { formalLevel, metaphorLevel, intensity } })
+      const res = await apiFetch(`${API}/api/script`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ concept, archetype, language:lang, brandVoice:{ formalLevel,metaphorLevel,intensity } })
       })
-      const data = await res.json()
+      const data: ScriptData = await res.json()
       setScript(data)
-      const newIter = { timestamp: Date.now(), brief, archetype, language, brandVoice: { formalLevel, metaphorLevel, intensity }, insight, concept, script: data }
-      const updated = [newIter, ...iterations].slice(0, 10)
+      const iter: Iteration = { timestamp:Date.now(), brief, archetype, language:lang, brandVoice:{formalLevel,metaphorLevel,intensity}, insight, concept, script:data }
+      const updated = [iter, ...iterations].slice(0,10)
       setIterations(updated)
       localStorage.setItem('textfx_iterations', JSON.stringify(updated))
-    } catch (e) { console.error(e) }
+      scrollTo(scriptRef)
+    } catch (e) { handleError(e) }
     finally { setLoading(false) }
   }
 
-  const handleExport = () => {
+  const doExport = () => {
     const doc = new jsPDF()
-    doc.text(`TextFX Export - ${new Date().toLocaleDateString()}`, 10, 10)
-    doc.text(brief, 10, 20)
-    if (script) doc.text(script.script, 10, 40)
+    doc.setFontSize(16); doc.text('TextFX Masterpiece', 10, 15)
+    doc.setFontSize(10); doc.text(`Brief: ${brief}`, 10, 28)
+    if (insight) doc.text(`Insight: ${insight.mainInsight}`, 10, 40, { maxWidth:190 })
+    if (concept) { doc.text(`Concept: ${concept.title} — ${concept.tagline}`, 10,55); doc.text(concept.coreIdea, 10,68,{maxWidth:190}) }
+    if (script)  doc.text(script.script, 10, 90, { maxWidth:190 })
     doc.save('textfx-masterpiece.pdf')
   }
 
   return (
-    <div className={`container ${isRtl ? 'rtl' : ''}`} dir={isRtl ? 'rtl' : 'ltr'}>
-      <header className="header">
-        <h1>{t.title}</h1>
-        <p className="tagline">{t.tagline}</p>
+    <div className={`app-root${dark ? ' dark' : ' light'}`} dir={isRtl ? 'rtl' : 'ltr'}>
 
-        <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 40 }}>
-          <button className="btn btn-secondary" onClick={() => setLanguage(l => l === 'en' ? 'ar' : 'en')}>
-            {language === 'en' ? '🇺🇸 ENGLISH' : '🇸🇦 العربية'}
+      {/* ── Loading Overlay ───────────────────────────────────────────── */}
+      {loading && (
+        <div className="loading-overlay" role="status" aria-live="polite">
+          <div className="spinner" aria-hidden="true" />
+          <p className="loading-label">{t.thinking}</p>
+        </div>
+      )}
+
+      {/* ── Header ───────────────────────────────────────────────────── */}
+      <header className="header" role="banner">
+        <h1 className="header-title">{t.title}</h1>
+        <p  className="header-tagline">{t.tagline}</p>
+        <div className="header-actions" role="toolbar" aria-label="App controls">
+          <button
+            className="btn btn-ghost"
+            aria-label={lang === 'en' ? 'Switch to Arabic' : 'Switch to English'}
+            onClick={() => setLang(l => l === 'en' ? 'ar' : 'en')}
+          >
+            {lang === 'en' ? '🇸🇦 عربي' : '🇺🇸 English'}
           </button>
-          <button className="btn btn-secondary" onClick={() => setDark(!dark)}>
-            {dark ? 'NEBULA DARK' : 'NEBULA LIGHT'}
+          <button
+            className="btn btn-ghost"
+            aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
+            aria-pressed={dark}
+            onClick={() => setDark(d => !d)}
+          >
+            {dark ? '☀️' : '🌙'}
           </button>
         </div>
       </header>
 
-      <div className="stage-container">
-        {/* STAGE 1: IDENTITY */}
-        <section>
+      {/* ── Error Banner ─────────────────────────────────────────────── */}
+      {error && (
+        <div className="error-banner" role="alert" aria-live="assertive">
+          <span>{error}</span>
+          <div className="error-actions">
+            <button className="btn btn-ghost" aria-label={t.retry} onClick={() => setError(null)}>{t.retry}</button>
+            <button className="btn btn-ghost" aria-label="Dismiss" onClick={() => setError(null)}>✕</button>
+          </div>
+        </div>
+      )}
+
+      <main className="main" role="main">
+
+        {/* ── Stage 01: Brand Identity ──────────────────────────────── */}
+        <section className="stage" aria-labelledby="stage-01-title">
           <div className="stage-header">
-            <span className="stage-number">01</span>
-            <h2 className="stage-title">{t.brandPersonality}</h2>
+            <span className="stage-number" aria-hidden="true">01</span>
+            <h2 className="stage-title" id="stage-01-title">{t.brandPersonality}</h2>
           </div>
           <div className="pane">
-            <div className="archetype-grid">
-              {archetypes.map(a => (
-                <div key={a.name} className={`archetype-card ${archetype === a.name ? 'active' : ''}`} onClick={() => setArchetype(a.name)}>
-                  <span className="icon">{a.icon}</span>
-                  <span className="name">{isRtl ? a.nameAr : a.name}</span>
-                  <span className="desc">{isRtl ? a.descAr : a.desc}</span>
-                </div>
+            <div className="archetype-grid" role="radiogroup" aria-label="Brand Archetype">
+              {ARCHETYPES.map(a => (
+                <button
+                  key={a.name}
+                  role="radio"
+                  aria-checked={archetype === a.name}
+                  className={`arch-card${archetype === a.name ? ' active' : ''}`}
+                  onClick={() => setArchetype(a.name)}
+                  tabIndex={archetype === a.name ? 0 : -1}
+                >
+                  <span className="arch-icon" aria-hidden="true">{a.icon}</span>
+                  <span className="arch-name">{isRtl ? a.nameAr : a.name}</span>
+                  <span className="arch-desc">{isRtl ? a.descAr : a.desc}</span>
+                </button>
               ))}
             </div>
 
-            <div className="voice-controls" style={{ marginTop: 40, borderTop: '1px solid var(--border)', paddingTop: 40 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 40 }}>
-                <div className="control">
-                  <label>{t.tone}: <span style={{ color: 'var(--primary)' }}>{formalLevel > 7 ? t.formal : formalLevel < 3 ? t.casual : t.balanced}</span></label>
-                  <input type="range" min="0" max="10" value={formalLevel} onChange={e => setFormalLevel(parseInt(e.target.value))} />
+            <div className="voice-grid" role="group" aria-label="Brand Voice Controls">
+              {[
+                { id:'tone',       label:t.tone,          val:formalLevel,   set:setFormalLevel,   lo:t.casual,     hi:t.formal,      mid:t.balanced },
+                { id:'metaphor',   label:t.languageStyle,  val:metaphorLevel, set:setMetaphorLevel, lo:t.literal,    hi:t.metaphorical, mid:t.mixed },
+                { id:'intensity',  label:t.intensity,      val:intensity,     set:setIntensity,     lo:t.subtle,     hi:t.high,         mid:t.standard },
+              ].map(ctrl => (
+                <div key={ctrl.id} className="slider-control">
+                  <label className="slider-label" htmlFor={ctrl.id}>
+                    <span>{ctrl.label}</span>
+                    <span className="slider-val" aria-live="polite">
+                      {ctrl.val > 7 ? ctrl.hi : ctrl.val < 3 ? ctrl.lo : ctrl.mid}
+                    </span>
+                  </label>
+                  <input
+                    id={ctrl.id} type="range" min="0" max="10"
+                    value={ctrl.val} className="slider"
+                    aria-valuenow={ctrl.val} aria-valuemin={0} aria-valuemax={10}
+                    onChange={e => ctrl.set(parseInt(e.target.value))}
+                  />
                 </div>
-                <div className="control">
-                  <label>{t.languageStyle}: <span style={{ color: 'var(--primary)' }}>{metaphorLevel > 7 ? t.metaphorical : metaphorLevel < 3 ? t.literal : t.mixed}</span></label>
-                  <input type="range" min="0" max="10" value={metaphorLevel} onChange={e => setMetaphorLevel(parseInt(e.target.value))} />
-                </div>
-                <div className="control">
-                  <label>{t.intensity}: <span style={{ color: 'var(--primary)' }}>{intensity > 7 ? t.high : intensity < 3 ? t.subtle : t.standard}</span></label>
-                  <input type="range" min="0" max="10" value={intensity} onChange={e => setIntensity(parseInt(e.target.value))} />
-                </div>
-              </div>
+              ))}
             </div>
           </div>
         </section>
 
-        {/* STAGE 2: DRAFTING */}
-        <section>
+        {/* ── Stage 02: Brief ──────────────────────────────────────── */}
+        <section className="stage" aria-labelledby="stage-02-title">
           <div className="stage-header">
-            <span className="stage-number">02</span>
-            <h2 className="stage-title">{t.briefTitle}</h2>
+            <span className="stage-number" aria-hidden="true">02</span>
+            <h2 className="stage-title" id="stage-02-title">{t.briefTitle}</h2>
           </div>
           <div className="pane">
             <textarea
+              className="textarea"
               value={brief}
-              onChange={(e) => setBrief(e.target.value)}
+              onChange={e => setBrief(e.target.value)}
               placeholder={t.briefPlaceholder}
-              className="input"
-              dir="auto"
-              style={{ marginBottom: 32 }}
+              dir="auto" rows={6}
+              aria-label={t.briefTitle}
+              aria-required="true"
             />
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <button onClick={generateInsight} disabled={!brief || loading} className="btn btn-primary" style={{ minWidth: 240 }}>
+            <div className="btn-row">
+              <button
+                className="btn btn-primary btn-full"
+                onClick={doGenerateInsight}
+                disabled={!brief.trim() || loading}
+                aria-busy={loading}
+              >
                 {loading ? t.thinking : t.generateBtn}
               </button>
             </div>
           </div>
         </section>
 
-        {/* STAGE 3: STRATEGY */}
+        {/* ── Stage 03: Insight ──────────────────────────────────── */}
         {insight && (
-          <section>
+          <section className="stage" ref={insightRef} aria-labelledby="stage-03-title" tabIndex={-1}>
             <div className="stage-header">
-              <span className="stage-number">03</span>
-              <h2 className="stage-title">{t.insightTitle}</h2>
+              <span className="stage-number" aria-hidden="true">03</span>
+              <h2 className="stage-title" id="stage-03-title">{t.insightTitle}</h2>
             </div>
             <div className="pane">
-              <div className="insight-core">{insight.mainInsight}</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 40 }}>
+              <blockquote className="insight-hero">{insight.mainInsight}</blockquote>
+              <div className="two-col">
                 <div className="technique">
-                  <h3>{t.reversals}</h3>
-                  <ul><li>{insight.lateralThinkingBreakdown?.provocation?.reversal}</li></ul>
+                  <h3 className="technique-label">{t.reversals}</h3>
+                  <ul className="technique-list">
+                    <li>{insight.lateralThinkingBreakdown?.provocation?.reversal}</li>
+                  </ul>
                 </div>
                 <div className="technique">
-                  <h3>{t.metaphors}</h3>
-                  <ul>{insight.lateralThinkingBreakdown?.analogies?.map((a, i) => (
-                    <li key={i}>{a.metaphor}</li>
-                  ))}</ul>
+                  <h3 className="technique-label">{t.metaphors}</h3>
+                  <ul className="technique-list">
+                    {insight.lateralThinkingBreakdown?.analogies?.map((a,i) => <li key={i}>{a.metaphor}</li>)}
+                  </ul>
                 </div>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 40 }}>
-                <button onClick={convertConcept} disabled={loading} className="btn btn-primary" style={{ minWidth: 240, background: 'var(--secondary)' }}>
-                  {loading ? t.thinking : t.convertBtn}
-                </button>
+              <div className="btn-row">
+                <button
+                  className="btn btn-secondary-accent btn-full"
+                  onClick={doConvertConcept}
+                  disabled={loading}
+                  aria-busy={loading}
+                >{loading ? t.thinking : t.convertBtn}</button>
               </div>
             </div>
           </section>
         )}
 
-        {/* STAGE 4: CONCEPTION */}
+        {/* ── Stage 04: Concept ──────────────────────────────────── */}
         {concept && (
-          <section>
+          <section className="stage" ref={conceptRef} aria-labelledby="stage-04-title" tabIndex={-1}>
             <div className="stage-header">
-              <span className="stage-number">04</span>
-              <h2 className="stage-title">{t.conceptTitle}</h2>
+              <span className="stage-number" aria-hidden="true">04</span>
+              <h2 className="stage-title" id="stage-04-title">{t.conceptTitle}</h2>
             </div>
             <div className="pane">
-              <h3 style={{ fontSize: '2.5rem', margin: '0 0 8px 0', fontFamily: 'Outfit' }}>{concept.title}</h3>
-              <p className="tagline" style={{ fontSize: '1.4rem', color: 'var(--secondary)', marginBottom: 40 }}>"{concept.tagline}"</p>
-              <div style={{ padding: 32, background: 'rgba(2,6,23,0.4)', borderRadius: 16, marginBottom: 40, border: '1px solid var(--border)' }}>
-                <p style={{ margin: 0, fontSize: '1.2rem', color: 'var(--text-secondary)' }}>{concept.coreIdea}</p>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 40 }}>
+              <h3 className="concept-title">{concept.title}</h3>
+              <p  className="concept-tagline">"{concept.tagline}"</p>
+              <div className="concept-body"><p>{concept.coreIdea}</p></div>
+              <div className="two-col">
                 <div className="technique">
-                  <h3>{t.creativeDevice}</h3>
-                  <p style={{ fontSize: '1.1rem' }}>{concept.creativeDevice}</p>
+                  <h3 className="technique-label">{t.creativeDevice}</h3>
+                  <p className="technique-text">{concept.creativeDevice}</p>
                 </div>
                 <div className="technique">
-                  <h3>{t.emotionalArc}</h3>
-                  <p style={{ fontSize: '1.1rem' }}>{concept.emotionalArc}</p>
+                  <h3 className="technique-label">{t.emotionalArc}</h3>
+                  <p className="technique-text">{concept.emotionalArc}</p>
                 </div>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 40 }}>
-                <button onClick={writeScript} disabled={loading} className="btn btn-primary" style={{ minWidth: 240, background: 'var(--accent)', color: '#fff' }}>
-                  {loading ? t.writing : t.writeScriptBtn}
-                </button>
+              <div className="btn-row">
+                <button
+                  className="btn btn-accent btn-full"
+                  onClick={doWriteScript}
+                  disabled={loading}
+                  aria-busy={loading}
+                >{loading ? t.writing : t.writeScriptBtn}</button>
               </div>
             </div>
           </section>
         )}
 
-        {/* STAGE 5: SCRIPT */}
+        {/* ── Stage 05: Script ───────────────────────────────────── */}
         {script && (
-          <section>
+          <section className="stage" ref={scriptRef} aria-labelledby="stage-05-title" tabIndex={-1}>
             <div className="stage-header">
-              <span className="stage-number">05</span>
-              <h2 className="stage-title">{t.scriptTitle}</h2>
+              <span className="stage-number" aria-hidden="true">05</span>
+              <h2 className="stage-title" id="stage-05-title">{t.scriptTitle}</h2>
             </div>
             <div className="pane">
-              <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 60 }}>
-                <pre className="script-text" dir="auto">{script.script}</pre>
-                <div>
-                  <div className="technique">
-                    <h3>{t.emotionalBeats}</h3>
-                    <ul style={{ padding: 0 }}>{script.beats.map((b, i) => <li key={i}>{b}</li>)}</ul>
-                  </div>
-                  <div className="technique" style={{ marginTop: 40 }}>
-                    <h3>{t.cameraLanguage}</h3>
-                    <p style={{ fontSize: '1.1rem' }}>{script.cameraLanguage}</p>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 60 }}>
-                    <button onClick={() => navigator.clipboard.writeText(script.script)} className="btn btn-secondary">{t.copyScript}</button>
-                    <button onClick={handleExport} className="btn btn-secondary">{t.exportPdf}</button>
-                  </div>
+              <pre className="script-block" dir="auto" aria-label={t.scriptTitle}>{script.script}</pre>
+              <div className="two-col" style={{marginTop:'24px'}}>
+                <div className="technique">
+                  <h3 className="technique-label">{t.emotionalBeats}</h3>
+                  <ul className="technique-list">
+                    {script.beats.map((b,i) => <li key={i}>{b}</li>)}
+                  </ul>
                 </div>
+                <div className="technique">
+                  <h3 className="technique-label">{t.cameraLanguage}</h3>
+                  <p className="technique-text">{script.cameraLanguage}</p>
+                </div>
+              </div>
+              <div className="btn-row btn-col">
+                <button className="btn btn-secondary btn-full" onClick={() => navigator.clipboard.writeText(script.script)} aria-label={t.copyScript}>{t.copyScript}</button>
+                <button className="btn btn-secondary btn-full" onClick={doExport} aria-label={t.exportPdf}>{t.exportPdf}</button>
               </div>
             </div>
           </section>
         )}
 
-        {/* ARCHIVE */}
+        {/* ── Archive ─────────────────────────────────────────────── */}
         {iterations.length > 0 && (
-          <section style={{ marginTop: 120, borderTop: '1px solid var(--border)', paddingTop: 80 }}>
-            <h2 className="stage-title" style={{ marginBottom: 32 }}>{t.savedIterations}</h2>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
-              {iterations.map((iter) => (
-                <button key={iter.timestamp} className="btn btn-secondary" onClick={() => { setBrief(iter.brief); setInsight(iter.insight); setConcept(iter.concept); setScript(iter.script); }} style={{ textAlign: 'left', padding: '16px 24px', borderRadius: 16 }}>
-                  <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)' }}>{new Date(iter.timestamp).toLocaleTimeString()}</span>
-                  <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{iter.brief.slice(0, 30)}...</span>
+          <section className="stage archive" aria-labelledby="archive-title">
+            <div className="stage-header">
+              <h2 className="stage-title" id="archive-title">{t.savedIterations}</h2>
+              <button className="btn btn-ghost" aria-label={t.clear}
+                onClick={() => { setIterations([]); localStorage.removeItem('textfx_iterations') }}>
+                {t.clear}
+              </button>
+            </div>
+            <div className="archive-grid">
+              {iterations.map(it => (
+                <button key={it.timestamp} className="archive-card"
+                  onClick={() => { setBrief(it.brief); setInsight(it.insight); setConcept(it.concept); setScript(it.script) }}
+                  aria-label={`Restore: ${it.brief.slice(0,40)}`}
+                >
+                  <span className="arc-time">{new Date(it.timestamp).toLocaleTimeString()}</span>
+                  <span className="arc-brief">{it.brief.slice(0,40)}…</span>
+                  <span className="arc-arch">{it.archetype}</span>
                 </button>
               ))}
             </div>
           </section>
         )}
-      </div>
+      </main>
     </div>
+  )
+}
+
+export default function Root() {
+  return (
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   )
 }

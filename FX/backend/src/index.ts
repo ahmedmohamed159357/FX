@@ -1,195 +1,236 @@
-import express, { Request, Response } from 'express'
+/**
+ * TextFX v5 — Production Backend
+ * Hardened: structured logging, dynamic CORS, graceful shutdown, health/version/ping endpoints
+ */
+import express, { Request, Response, NextFunction } from 'express'
 import cors from 'cors'
 import dotenv from 'dotenv'
 import { generateInsight } from './modules/insight-generator'
-import { mapConcept } from './modules/concept-mapper'
-import { writeScript } from './modules/script-writer'
+import { mapConcept }      from './modules/concept-mapper'
+import { writeScript }     from './modules/script-writer'
 import { getLateralThinkingSystemPrompt } from './modules/lateral-thinking-agent'
 import * as vertexProvider from './providers/googleVertexProvider'
-import * as openaiProvider from './providers/openaiProvider'
+import * as openaiProvider  from './providers/openaiProvider'
 
-const app = express()
+// ─────────────────────────────────────────────────────────────────────────────
+// Bootstrap
+// ─────────────────────────────────────────────────────────────────────────────
 dotenv.config()
-app.use(cors())
-app.use(express.json())
 
-// Health check
-app.get('/health', (_req: Request, res: Response) => {
-  res.json({ status: 'TextFX Backend alive', timestamp: new Date().toISOString() })
+const NODE_ENV = process.env.NODE_ENV || 'development'
+const isProd   = NODE_ENV === 'production'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Structured Logger
+// ─────────────────────────────────────────────────────────────────────────────
+function log(level: 'info' | 'warn' | 'error', msg: string, meta: Record<string, unknown> = {}) {
+  console[level](JSON.stringify({ level, ts: new Date().toISOString(), msg, ...meta }))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CORS — Dynamic, production-safe
+// ─────────────────────────────────────────────────────────────────────────────
+const rawOrigins = process.env.ALLOWED_ORIGINS || ''
+const allowedOrigins: string[] = rawOrigins
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean)
+
+if (isProd && allowedOrigins.length === 0) {
+  log('error', 'ALLOWED_ORIGINS is not set in production — refusing to start with open CORS.')
+  process.exit(1)
+}
+
+const corsOptions: cors.CorsOptions = {
+  origin: allowedOrigins.length === 0
+    ? true // dev: allow all
+    : (origin, cb) => {
+        if (!origin || allowedOrigins.includes(origin)) return cb(null, true)
+        log('warn', 'Blocked by CORS', { origin })
+        cb(new Error(`Origin ${origin} not allowed`))
+      },
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// App
+// ─────────────────────────────────────────────────────────────────────────────
+const app = express()
+app.use(cors(corsOptions))
+app.options('*', cors(corsOptions))
+app.use(express.json({ limit: '1mb' }))
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Request logger middleware
+// ─────────────────────────────────────────────────────────────────────────────
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const start = Date.now()
+  res.on('finish', () => {
+    log('info', 'request', {
+      method:   req.method,
+      path:     req.path,
+      status:   res.statusCode,
+      duration: `${Date.now() - start}ms`,
+      ip:       req.ip,
+    })
+  })
+  next()
 })
 
-// System prompt for AI providers
+// ─────────────────────────────────────────────────────────────────────────────
+// Provider factory (shared)
+// ─────────────────────────────────────────────────────────────────────────────
+function buildProviderContext(extra: Record<string, unknown> = {}) {
+  const hasOpenAI  = !!process.env.OPENAI_API_KEY
+  const hasVertex  = !!process.env.GOOGLE_CLOUD_PROJECT
+  return {
+    useRealAI:      hasOpenAI || hasVertex,
+    provider:       hasOpenAI ? openaiProvider : hasVertex ? vertexProvider : null,
+    providerConfig: hasOpenAI ? openaiProvider.initializeOpenAI() : hasVertex ? vertexProvider.initializeVertexAI() : null,
+    ...extra,
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HEALTH, VERSION, PING
+// ─────────────────────────────────────────────────────────────────────────────
+app.get('/health', (_req: Request, res: Response) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() })
+})
+
+app.get('/version', (_req: Request, res: Response) => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { version } = require('../../package.json') as { version: string }
+  res.json({ version, env: NODE_ENV })
+})
+
+app.get('/api/ping', async (_req: Request, res: Response) => {
+  const controller = new AbortController()
+  const timeout    = setTimeout(() => controller.abort(), 10_000)
+  try {
+    const downstream = await fetch('https://api.openai.com', { signal: controller.signal })
+    clearTimeout(timeout)
+    res.json({ ok: true, downstream: { status: downstream.status, url: 'https://api.openai.com' } })
+  } catch (err: unknown) {
+    clearTimeout(timeout)
+    const msg = err instanceof Error ? err.message : String(err)
+    res.status(503).json({ ok: false, error: msg })
+  }
+})
+
 app.get('/api/system-prompt', (_req: Request, res: Response) => {
   res.json({ systemPrompt: getLateralThinkingSystemPrompt() })
 })
 
-// Generate Insight using 5 lateral thinking techniques
-app.post('/api/insight', async (req: Request, res: Response) => {
-  try {
-    const { brief, archetype, brandVoice, language } = req.body || {}
-    if (!brief) {
-      return res.status(400).json({ error: 'Brief is required' })
-    }
-    const output = await generateInsight(brief, archetype, brandVoice, language)
-    res.json(output)
-  } catch (error) {
-    res.status(500).json({ error: (error as any).message })
-  }
-})
-
-// Map Insight to Concept using cognitive shifts and metaphor strategy
-app.post('/api/concept', async (req: Request, res: Response) => {
-  try {
-    const { insight, archetype, brandVoice, language } = req.body || {}
-    if (!insight) {
-      return res.status(400).json({ error: 'Insight is required' })
-    }
-
-    // Determine Provider (same logic as insight)
-    const context = {
-      domain: 'innovation',
-      problem: insight.mainInsight || 'challenge',
-      target: 'audience',
-      useRealAI: !!(process.env.OPENAI_API_KEY || process.env.GOOGLE_CLOUD_PROJECT),
-      provider: process.env.OPENAI_API_KEY ? openaiProvider : process.env.GOOGLE_CLOUD_PROJECT ? vertexProvider : null,
-      providerConfig: process.env.OPENAI_API_KEY ? openaiProvider.initializeOpenAI() : process.env.GOOGLE_CLOUD_PROJECT ? vertexProvider.initializeVertexAI() : null,
-      archetype,
-      brandVoice,
-      language
-    }
-
-    const output = await mapConcept(insight, context)
-    res.json(output)
-  } catch (error) {
-    res.status(500).json({ error: (error as any).message })
-  }
-})
-
-// Write Script using 3-beat emotional structure
-app.post('/api/script', async (req: Request, res: Response) => {
-  try {
-    const { concept, archetype, brandVoice, language } = req.body || {}
-    if (!concept) {
-      return res.status(400).json({ error: 'Concept is required' })
-    }
-
-    const context = {
-      domain: 'innovation',
-      problem: concept.coreIdea || 'strategy',
-      target: 'audience',
-      useRealAI: !!(process.env.OPENAI_API_KEY || process.env.GOOGLE_CLOUD_PROJECT),
-      provider: process.env.OPENAI_API_KEY ? openaiProvider : process.env.GOOGLE_CLOUD_PROJECT ? vertexProvider : null,
-      providerConfig: process.env.OPENAI_API_KEY ? openaiProvider.initializeOpenAI() : process.env.GOOGLE_CLOUD_PROJECT ? vertexProvider.initializeVertexAI() : null,
-      archetype,
-      brandVoice,
-      language
-    }
-
-    const output = await writeScript(concept, context)
-    res.json(output)
-  } catch (error) {
-    res.status(500).json({ error: (error as any).message })
-  }
-})
-
-// Full pipeline: Brief → Insight → Concept → Script
-app.post('/api/full-pipeline', async (req: Request, res: Response) => {
-  try {
-    const { brief, archetype, brandVoice, language } = req.body || {}
-    if (!brief) {
-      return res.status(400).json({ error: 'Brief is required' })
-    }
-
-    console.log('🚀 TextFX Full Pipeline Started')
-    console.log(`Brief: ${brief.substring(0, 100)}...`)
-    console.log(`Archetype: ${archetype || 'Default'}`)
-    console.log(`Language: ${language || 'en'}`)
-
-    const context = {
-      domain: 'innovation',
-      problem: brief,
-      target: 'audience',
-      useRealAI: !!(process.env.OPENAI_API_KEY || process.env.GOOGLE_CLOUD_PROJECT),
-      provider: process.env.OPENAI_API_KEY ? openaiProvider : process.env.GOOGLE_CLOUD_PROJECT ? vertexProvider : null,
-      providerConfig: process.env.OPENAI_API_KEY ? openaiProvider.initializeOpenAI() : process.env.GOOGLE_CLOUD_PROJECT ? vertexProvider.initializeVertexAI() : null,
-      archetype,
-      brandVoice,
-      language
-    }
-
-    // @ts-ignore
-    const insight = await generateInsight(brief, archetype, brandVoice, language)
-    console.log('✓ Insight generated')
-
-    const concept = await mapConcept(insight, context)
-    console.log('✓ Concept mapped')
-
-    const script = await writeScript(concept, context)
-    console.log('✓ Script written')
-
-    res.json({
-      brief,
-      insight,
-      concept,
-      script,
-      pipelineStatus: 'complete'
-    })
-  } catch (error) {
-    res.status(500).json({ error: (error as any).message })
-  }
-})
-
-// AI Provider Status & Setup
 app.get('/api/providers/status', (_req: Request, res: Response) => {
-  const status = {
+  res.json({
     vertexAI: {
-      configured: !!process.env.GOOGLE_CLOUD_PROJECT || !!process.env.VERTEX_PROJECT_ID,
-      projectId: process.env.GOOGLE_CLOUD_PROJECT || process.env.VERTEX_PROJECT_ID || 'not-set',
-      model: process.env.VERTEX_MODEL || 'gemini-pro',
-      setupGuide: vertexProvider.getVertexAISetupGuide()
+      configured: !!process.env.GOOGLE_CLOUD_PROJECT,
+      projectId:  process.env.GOOGLE_CLOUD_PROJECT || 'not-set',
+      model:      process.env.VERTEX_MODEL || 'gemini-pro',
     },
     openai: {
       configured: !!process.env.OPENAI_API_KEY,
-      model: process.env.OPENAI_MODEL || 'gpt-4',
-      setupGuide: openaiProvider.getOpenAISetupGuide()
+      model:      process.env.OPENAI_MODEL || 'gpt-4',
     },
-    currentMode: process.env.OPENAI_API_KEY
-      ? 'OpenAI'
-      : process.env.GOOGLE_CLOUD_PROJECT
-        ? 'Vertex AI'
-        : 'Mock (development)'
-  }
-  res.json(status)
+    currentMode: process.env.OPENAI_API_KEY ? 'OpenAI' : process.env.GOOGLE_CLOUD_PROJECT ? 'VertexAI' : 'Mock',
+  })
 })
 
-const port = parseInt(process.env.PORT || '4002', 10)
-app.listen(port, '0.0.0.0', () => {
-  console.log(`
-╔══════════════════════════════════════════════════════════╗
-║         🎬 TextFX Backend — Lateral Thinking Agent      ║
-╠══════════════════════════════════════════════════════════╣
-║ Listening on http://localhost:${port}                      ║
-║                                                          ║
-║ Endpoints:                                              ║
-║   POST /api/insight      → Generate lateral insights    ║
-║   POST /api/concept      → Map concept from insight     ║
-║   POST /api/script       → Write 3-beat script          ║
-║   POST /api/full-pipeline → Brief → Insight → Script    ║
-║   GET  /api/system-prompt → AI system prompt            ║
-║   GET  /api/providers/status → Check AI provider setup  ║
-║   GET  /health           → Server health check          ║
-║                                                          ║
-║ Techniques:                                             ║
-║   ✓ Provocation (PO)                                    ║
-║   ✓ Analogies & Connections                            ║
-║   ✓ Random Stimulus                                     ║
-║   ✓ Opposite Thinking                                   ║
-║   ✓ Constraint Reversal                                 ║
-║                                                          ║
-║ Providers:                                              ║
-║   ✓ Mock Mode (Development)                             ║
-║   → Google Vertex AI (with credentials)                 ║
-║   → OpenAI (with API key)                               ║
-╚══════════════════════════════════════════════════════════╝
-  `)
+// ─────────────────────────────────────────────────────────────────────────────
+// API ROUTES
+// ─────────────────────────────────────────────────────────────────────────────
+app.post('/api/insight', async (req: Request, res: Response) => {
+  const { brief, archetype, brandVoice, language } = req.body || {}
+  if (!brief) return void res.status(400).json({ error: 'brief is required' })
+  try {
+    const output = await generateInsight(brief, archetype, brandVoice, language)
+    res.json(output)
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    log('error', 'insight failed', { msg })
+    res.status(500).json({ error: msg })
+  }
 })
+
+app.post('/api/concept', async (req: Request, res: Response) => {
+  const { insight, archetype, brandVoice, language } = req.body || {}
+  if (!insight) return void res.status(400).json({ error: 'insight is required' })
+  try {
+    const ctx = buildProviderContext({
+      domain: 'innovation', problem: insight.mainInsight || 'challenge', target: 'audience',
+      archetype, brandVoice, language,
+    })
+    const output = await mapConcept(insight, ctx)
+    res.json(output)
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    log('error', 'concept failed', { msg })
+    res.status(500).json({ error: msg })
+  }
+})
+
+app.post('/api/script', async (req: Request, res: Response) => {
+  const { concept, archetype, brandVoice, language } = req.body || {}
+  if (!concept) return void res.status(400).json({ error: 'concept is required' })
+  try {
+    const ctx = buildProviderContext({
+      domain: 'innovation', problem: concept.coreIdea || 'strategy', target: 'audience',
+      archetype, brandVoice, language,
+    })
+    const output = await writeScript(concept, ctx)
+    res.json(output)
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    log('error', 'script failed', { msg })
+    res.status(500).json({ error: msg })
+  }
+})
+
+app.post('/api/full-pipeline', async (req: Request, res: Response) => {
+  const { brief, archetype, brandVoice, language } = req.body || {}
+  if (!brief) return void res.status(400).json({ error: 'brief is required' })
+  try {
+    const ctx = buildProviderContext({
+      domain: 'innovation', problem: brief, target: 'audience',
+      archetype, brandVoice, language,
+    })
+    const insight = await generateInsight(brief, archetype, brandVoice, language)
+    const concept = await mapConcept(insight, ctx)
+    const script  = await writeScript(concept, ctx)
+    res.json({ brief, insight, concept, script, pipelineStatus: 'complete' })
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    log('error', 'full-pipeline failed', { msg })
+    res.status(500).json({ error: msg })
+  }
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Global error handler
+// ─────────────────────────────────────────────────────────────────────────────
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+  log('error', 'unhandled', { msg: err.message, stack: err.stack })
+  res.status(500).json({ error: 'Internal server error' })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Start
+// ─────────────────────────────────────────────────────────────────────────────
+const port = parseInt(process.env.PORT || '4002', 10)
+
+const server = app.listen(port, '0.0.0.0', () => {
+  log('info', 'server started', { port, env: NODE_ENV, cors: allowedOrigins.length || 'open-dev' })
+})
+
+// Graceful shutdown
+const shutdown = (signal: string) => {
+  log('info', `${signal} received — graceful shutdown`)
+  server.close(() => { log('info', 'server closed'); process.exit(0) })
+  setTimeout(() => process.exit(1), 10_000)
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'))
+process.on('SIGINT',  () => shutdown('SIGINT'))

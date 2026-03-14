@@ -1,0 +1,118 @@
+name: Build & Smoke Tests
+
+on:
+  push:
+    branches: [ feat/prod-nuclear-setup, main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      NODE_VERSION: '18'
+
+    steps:
+      # ── Checkout ────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Node.js ─────────────────────────────────────────────────────
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: |
+            FX/backend/package-lock.json
+            FX/app/package-lock.json
+
+      # ── Backend: install & build ────────────────────────────────────
+      - name: Backend — npm ci
+        run: npm ci
+        working-directory: FX/backend
+
+      - name: Backend — typecheck
+        run: npx tsc --noEmit
+        working-directory: FX/backend
+
+      - name: Backend — build
+        run: npm run build
+        working-directory: FX/backend
+
+      # ── Frontend: install & build ───────────────────────────────────
+      - name: Frontend — npm ci
+        run: npm ci
+        working-directory: FX/app
+
+      - name: Frontend — typecheck
+        run: npx tsc --noEmit
+        working-directory: FX/app
+
+      - name: Frontend — build
+        run: npm run build
+        working-directory: FX/app
+        env:
+          VITE_API_URL: http://localhost:4002
+
+      # ── Smoke tests ─────────────────────────────────────────────────
+      - name: Start backend (background)
+        run: |
+          PORT=4002 NODE_ENV=test ALLOWED_ORIGINS="" \
+          node FX/backend/dist/index.js &
+          echo "BACKEND_PID=$!" >> $GITHUB_ENV
+          sleep 4
+
+      - name: Smoke — GET /health
+        run: |
+          STATUS=$(curl -s -o /tmp/health.json -w "%{http_code}" http://localhost:4002/health)
+          echo "Response: $(cat /tmp/health.json)"
+          [ "$STATUS" = "200" ] || (echo "❌ /health returned $STATUS" && exit 1)
+          grep -q '"ok"' /tmp/health.json || grep -q '"status"' /tmp/health.json || (echo "❌ bad body" && exit 1)
+          echo "✅ /health OK"
+
+      - name: Smoke — GET /version
+        run: |
+          STATUS=$(curl -s -o /tmp/version.json -w "%{http_code}" http://localhost:4002/version)
+          echo "Response: $(cat /tmp/version.json)"
+          [ "$STATUS" = "200" ] || (echo "❌ /version returned $STATUS" && exit 1)
+          echo "✅ /version OK"
+
+      - name: Smoke — POST /api/insight (mock mode)
+        run: |
+          STATUS=$(curl -s -o /tmp/insight.json -w "%{http_code}" \
+            -X POST http://localhost:4002/api/insight \
+            -H "Content-Type: application/json" \
+            -d '{"brief":"Test brief for CI smoke test","language":"en"}')
+          echo "Response (first 300 chars): $(cat /tmp/insight.json | head -c 300)"
+          [ "$STATUS" = "200" ] || (echo "❌ /api/insight returned $STATUS" && exit 1)
+          echo "✅ /api/insight OK"
+
+      - name: Stop backend
+        if: always()
+        run: kill ${{ env.BACKEND_PID }} 2>/dev/null || true
+
+      # ── Upload build artifacts ───────────────────────────────────────
+      - name: Upload backend dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-dist
+          path: FX/backend/dist/
+          retention-days: 7
+
+      - name: Upload frontend dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: FX/app/dist/
+          retention-days: 7
+
+      - name: Upload smoke test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-logs
+          path: /tmp/*.json
+          retention-days: 7
