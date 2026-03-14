@@ -1,0 +1,17 @@
+# Commands to push the fix branch
+
+# 1) Ensure you are on the fix branch (should already exist):
+# (If you already created the branch, this will do nothing)
+git checkout -B fix/ci-gitignore-workspace-20260314-0622
+
+# 2) Stage changes
+git add .gitignore package-lock.json \
+  .github/workflows/build-and-smoke.yml \
+  .github/workflows/android-artifact.yml \
+  fix-ci-and-gitignore.sh workflow_edits.md changes_summary.md cleanup.log validation.log commands_to_push.txt
+
+# 3) Commit
+git commit -m "Fix CI workflows and .gitignore; sync lockfile"
+
+# 4) Push
+git push -u origin fix/ci-gitignore-workspace-20260314-0622

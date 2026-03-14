@@ -1,0 +1,56 @@
+--- .gitignore.bak	2026-03-14 06:22:37.909931853 +0000
++++ .gitignore	2026-03-14 06:23:18.779930477 +0000
+@@ -1,43 +1,19 @@
+-# ── Secrets (NEVER commit) ───────────────────────────────────────────────────
+ .env
+-.env.local
+-.env.production
+-.env.staging
+-*.pem
+-*.key
+-*.p12
+-*.jks
++.env.*.local
++.DS_Store
++.vscode/
++.idea/
+ 
+-# ── Dependencies ─────────────────────────────────────────────────────────────
++# Dependencies
+ node_modules/
+-.npm/
+ 
+-# ── Build outputs ────────────────────────────────────────────────────────────
++# Build output
+ dist/
+ build/
+-*.tsbuildinfo
+ 
+-# ── Capacitor / Android (generated — do not commit) ──────────────────────────
+-android/
+-ios/
+-.capacitor/
+-
+-# ── Logs ─────────────────────────────────────────────────────────────────────
+-.logs/
++# Logs
++logs/
+ *.log
+-npm-debug.log*
+-yarn-debug.log*
+-
+-# ── OS artefacts ─────────────────────────────────────────────────────────────
+-.DS_Store
+-Thumbs.db
+-desktop.ini
+-
+-# ── Editor ───────────────────────────────────────────────────────────────────
+-.vscode/settings.json
+-.idea/
+-*.swp
+-*.swo
+ 
+-# ── Electron ─────────────────────────────────────────────────────────────────
+-dist-electron/
++# Coverage
++coverage/

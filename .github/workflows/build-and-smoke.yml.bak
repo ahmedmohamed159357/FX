@@ -26,34 +26,34 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
           cache-dependency-path: |
-            FX/backend/package-lock.json
-            FX/app/package-lock.json
+            backend/package-lock.json
+            app/package-lock.json
 
       # ── Backend: install & build ────────────────────────────────────
       - name: Backend — npm ci
         run: npm ci
-        working-directory: FX/backend
+        working-directory: backend
 
       - name: Backend — typecheck
         run: npx tsc --noEmit
-        working-directory: FX/backend
+        working-directory: backend
 
       - name: Backend — build
         run: npm run build
-        working-directory: FX/backend
+        working-directory: backend
 
       # ── Frontend: install & build ───────────────────────────────────
       - name: Frontend — npm ci
         run: npm ci
-        working-directory: FX/app
+        working-directory: app
 
       - name: Frontend — typecheck
         run: npx tsc --noEmit
-        working-directory: FX/app
+        working-directory: app
 
       - name: Frontend — build
         run: npm run build
-        working-directory: FX/app
+        working-directory: app
         env:
           VITE_API_URL: http://localhost:4002
 
@@ -61,7 +61,7 @@ jobs:
       - name: Start backend (background)
         run: |
           PORT=4002 NODE_ENV=test ALLOWED_ORIGINS="" \
-          node FX/backend/dist/index.js &
+          node backend/dist/index.js &
           echo "BACKEND_PID=$!" >> $GITHUB_ENV
           sleep 4
 
@@ -99,14 +99,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: backend-dist
-          path: FX/backend/dist/
+          path: backend/dist/
           retention-days: 7
 
       - name: Upload frontend dist
         uses: actions/upload-artifact@v4
         with:
           name: frontend-dist
-          path: FX/app/dist/
+          path: app/dist/
           retention-days: 7
 
       - name: Upload smoke test logs
